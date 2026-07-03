@@ -6,6 +6,7 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using System.Windows.Forms;
+using System.Globalization;
 
 namespace GpuCrashDetector;
 
@@ -275,6 +276,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         utilitiesMenu.DropDownItems.Add("Restart AMD Services", null, (_, _) => RestartAmdServices());
         utilitiesMenu.DropDownItems.Add("Clean Local Reports And Logs", null, (_, _) => CleanLocalReportsAndLogs());
         utilitiesMenu.DropDownItems.Add("Recover AMD Display Device", null, (_, _) => RecoverAmdDisplayDevice());
+        var driverUtilitiesMenu = new ToolStripMenuItem("Driver Utilities");
+        driverUtilitiesMenu.DropDownItems.Add("List AMD Drivers", null, (_, _) => ListAmdDrivers());
+        driverUtilitiesMenu.DropDownItems.Add("Switch AMD Driver", null, (_, _) => SwitchAmdDriver());
+        driverUtilitiesMenu.DropDownItems.Add("Delete AMD Driver Package", null, (_, _) => DeleteAmdDriverPackage());
 
         _menu = new ContextMenuStrip();
         _menu.Opening += (_, _) => RefreshMenu();
@@ -290,6 +295,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             new ToolStripMenuItem("Capture Snapshot Now", null, (_, _) => TriggerManualSnapshot()),
             _startupItem,
             utilitiesMenu,
+            driverUtilitiesMenu,
             new ToolStripSeparator(),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication())
         ]);
@@ -510,6 +516,180 @@ internal sealed class TrayApplicationContext : ApplicationContext
         });
     }
 
+    private void ListAmdDrivers()
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                var inventory = DriverDiscovery.GetAmdDriverInventory();
+                var reportPath = DriverInventoryReportWriter.WriteReport(_options.OutputDirectory, inventory);
+                var summary = DriverInventoryReportWriter.BuildListSummary(inventory, reportPath);
+
+                AppLog.Append(_options.OutputDirectory, $"List AMD Drivers: {summary}");
+                ShowResult("List AMD Drivers", summary, ToolTipIcon.Info);
+            }
+            catch (Exception ex)
+            {
+                _status.RecordError(ex);
+                AppLog.Append(_options.OutputDirectory, $"List AMD Drivers failed unexpectedly: {ex}");
+                ShowResult("List AMD Drivers", "The driver inventory utility failed unexpectedly.", ToolTipIcon.Error);
+            }
+        });
+    }
+
+    private void SwitchAmdDriver()
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                var inventory = DriverDiscovery.GetAmdDriverInventory();
+                if (inventory.TargetDevice is null)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Switch AMD Driver: no AMD display device found.");
+                    ShowResult("Switch AMD Driver", "No AMD display device was found.", ToolTipIcon.Info);
+                    return;
+                }
+
+                if (!inventory.HasConfirmedActivePackage)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Switch AMD Driver: active package correlation was ambiguous.");
+                    ShowResult("Switch AMD Driver", "The active AMD driver package could not be determined confidently. Use 'List AMD Drivers' first.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var candidates = inventory.Packages
+                    .Where(package => !package.IsActive)
+                    .OrderByDescending(package => package.DriverDateSortKey)
+                    .ThenByDescending(package => package.DriverVersionSortKey, DriverPackageVersionComparer.Instance)
+                    .ThenBy(package => package.PublishedName, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                if (candidates.Length == 0)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Switch AMD Driver: no alternate AMD packages found.");
+                    ShowResult("Switch AMD Driver", "No alternate installed AMD driver package was found.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var selected = candidates.Length == 1
+                    ? candidates[0]
+                    : PromptForDriverPackageSelection(
+                        "Switch AMD Driver",
+                        "Select the installed AMD driver package to apply:",
+                        candidates);
+
+                if (selected is null)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Switch AMD Driver: package selection cancelled.");
+                    ShowResult("Switch AMD Driver", "Driver switch was cancelled.", ToolTipIcon.Info);
+                    return;
+                }
+
+                if (!ConfirmAction(
+                        "Switch AMD Driver",
+                        $"Switch the AMD display device to '{selected.PublishedName}' ({selected.DisplayVersionAndDate}) now?"))
+                {
+                    AppLog.Append(_options.OutputDirectory, $"Switch AMD Driver: confirmation declined for {selected.PublishedName}.");
+                    ShowResult("Switch AMD Driver", "Driver switch was cancelled.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var script = UtilityScriptBuilder.BuildSwitchDriverScript(selected.PublishedName, selected.OriginalName, inventory.TargetDevice.InstanceId);
+                var result = ElevatedCommandRunner.Run("Switch AMD Driver", script, _options.OutputDirectory);
+                var refreshedInventory = DriverDiscovery.GetAmdDriverInventory();
+                var reportPath = DriverInventoryReportWriter.WriteReport(_options.OutputDirectory, refreshedInventory);
+                var summary = DriverInventoryReportWriter.BuildSwitchSummary(selected, refreshedInventory, reportPath, result);
+
+                AppLog.Append(_options.OutputDirectory, $"Switch AMD Driver: {summary}");
+                ShowResult("Switch AMD Driver", summary, ToUtilityIcon(result));
+            }
+            catch (Exception ex)
+            {
+                _status.RecordError(ex);
+                AppLog.Append(_options.OutputDirectory, $"Switch AMD Driver failed unexpectedly: {ex}");
+                ShowResult("Switch AMD Driver", "The driver switch utility failed unexpectedly.", ToolTipIcon.Error);
+            }
+        });
+    }
+
+    private void DeleteAmdDriverPackage()
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                var inventory = DriverDiscovery.GetAmdDriverInventory();
+                if (inventory.TargetDevice is null)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Delete AMD Driver Package: no AMD display device found.");
+                    ShowResult("Delete AMD Driver Package", "No AMD display device was found.", ToolTipIcon.Info);
+                    return;
+                }
+
+                if (inventory.ActivePackageCorrelationAmbiguous)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Delete AMD Driver Package: active package correlation was ambiguous.");
+                    ShowResult("Delete AMD Driver Package", "The active AMD driver package could not be determined confidently, so deletion is blocked.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var candidates = inventory.Packages
+                    .Where(package => !package.IsActive && !package.CouldBeActive)
+                    .OrderByDescending(package => package.DriverDateSortKey)
+                    .ThenByDescending(package => package.DriverVersionSortKey, DriverPackageVersionComparer.Instance)
+                    .ThenBy(package => package.PublishedName, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                if (candidates.Length == 0)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Delete AMD Driver Package: no removable AMD packages found.");
+                    ShowResult("Delete AMD Driver Package", "No removable non-active AMD driver package was found.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var selected = candidates.Length == 1
+                    ? candidates[0]
+                    : PromptForDriverPackageSelection(
+                        "Delete AMD Driver Package",
+                        "Select the non-active AMD driver package to remove:",
+                        candidates);
+
+                if (selected is null)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Delete AMD Driver Package: package selection cancelled.");
+                    ShowResult("Delete AMD Driver Package", "Driver package deletion was cancelled.", ToolTipIcon.Info);
+                    return;
+                }
+
+                if (!ConfirmAction(
+                        "Delete AMD Driver Package",
+                        $"Delete AMD driver package '{selected.PublishedName}' ({selected.DisplayVersionAndDate}) now?{Environment.NewLine}{Environment.NewLine}Warning: deleting display driver packages can force fallback or reinstall behavior."))
+                {
+                    AppLog.Append(_options.OutputDirectory, $"Delete AMD Driver Package: confirmation declined for {selected.PublishedName}.");
+                    ShowResult("Delete AMD Driver Package", "Driver package deletion was cancelled.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var script = UtilityScriptBuilder.BuildDeleteDriverPackageScript(selected.PublishedName);
+                var result = ElevatedCommandRunner.Run("Delete AMD Driver Package", script, _options.OutputDirectory);
+                var refreshedInventory = DriverDiscovery.GetAmdDriverInventory();
+                var reportPath = DriverInventoryReportWriter.WriteReport(_options.OutputDirectory, refreshedInventory);
+                var summary = DriverInventoryReportWriter.BuildDeleteSummary(selected, refreshedInventory, reportPath, result);
+
+                AppLog.Append(_options.OutputDirectory, $"Delete AMD Driver Package: {summary}");
+                ShowResult("Delete AMD Driver Package", summary, ToUtilityIcon(result));
+            }
+            catch (Exception ex)
+            {
+                _status.RecordError(ex);
+                AppLog.Append(_options.OutputDirectory, $"Delete AMD Driver Package failed unexpectedly: {ex}");
+                ShowResult("Delete AMD Driver Package", "The driver package deletion utility failed unexpectedly.", ToolTipIcon.Error);
+            }
+        });
+    }
+
     private void ToggleStartupRegistration(object? sender, EventArgs e)
     {
         try
@@ -624,6 +804,39 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ToolTipIcon.Warning => MessageBoxIcon.Warning,
             _ => MessageBoxIcon.Information
         };
+    }
+
+    private DriverPackageInfo? PromptForDriverPackageSelection(string title, string prompt, IReadOnlyList<DriverPackageInfo> packages)
+    {
+        DriverPackageInfo? selected = null;
+        using var waitHandle = new ManualResetEventSlim(false);
+
+        PostToUi(() =>
+        {
+            try
+            {
+                selected = DriverPackageSelectionDialog.Select(title, prompt, packages);
+            }
+            finally
+            {
+                waitHandle.Set();
+            }
+        });
+
+        waitHandle.Wait();
+        return selected;
+    }
+
+    private static ToolTipIcon ToUtilityIcon(UtilityExecutionResult result)
+    {
+        if (result.Success)
+        {
+            return ToolTipIcon.Info;
+        }
+
+        return result.Summary.Contains("cancelled", StringComparison.OrdinalIgnoreCase)
+            ? ToolTipIcon.Info
+            : ToolTipIcon.Warning;
     }
 
     private static string BuildTrayText(MonitorStatusSnapshot snapshot)
@@ -1036,6 +1249,76 @@ internal static class UtilityScriptBuilder
             "Recovered display device: $instanceId"
             """;
     }
+
+    public static string BuildSwitchDriverScript(string publishedName, string? originalName, string instanceId)
+    {
+        var escapedPublishedName = publishedName.Replace("'", "''", StringComparison.Ordinal);
+        var escapedOriginalName = (originalName ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
+        var escapedInstanceId = instanceId.Replace("'", "''", StringComparison.Ordinal);
+
+        return $$"""
+            $ErrorActionPreference = 'Stop'
+            $publishedName = '{{escapedPublishedName}}'
+            $expectedOriginalName = '{{escapedOriginalName}}'
+            $instanceId = '{{escapedInstanceId}}'
+            $exportRoot = Join-Path $env:TEMP ('GpuCrashDetector-driver-switch-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $exportRoot -Force | Out-Null
+            try {
+              pnputil /export-driver $publishedName "$exportRoot"
+              $exportExitCode = $LASTEXITCODE
+              if ($exportExitCode -ne 0) {
+                throw "pnputil /export-driver failed with exit code $exportExitCode."
+              }
+
+              $infFile = if ([string]::IsNullOrWhiteSpace($expectedOriginalName)) {
+                Get-ChildItem -Path $exportRoot -Recurse -Filter *.inf -File | Select-Object -First 1
+              }
+              else {
+                Get-ChildItem -Path $exportRoot -Recurse -Filter $expectedOriginalName -File | Select-Object -First 1
+              }
+
+              if (-not $infFile) {
+                throw "Could not locate the exported INF file for $publishedName."
+              }
+
+              pnputil /add-driver "$($infFile.FullName)" /install
+              $installExitCode = $LASTEXITCODE
+              pnputil /scan-devices
+              $scanExitCode = $LASTEXITCODE
+              pnputil /restart-device "$instanceId"
+              $restartExitCode = $LASTEXITCODE
+
+              if ($installExitCode -ne 0 -or $scanExitCode -ne 0 -or $restartExitCode -ne 0) {
+                throw "pnputil failed. add-driver=$installExitCode scan-devices=$scanExitCode restart-device=$restartExitCode"
+              }
+
+              "Attempted AMD driver switch using $publishedName on $instanceId"
+            }
+            finally {
+              Remove-Item -LiteralPath $exportRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            """;
+    }
+
+    public static string BuildDeleteDriverPackageScript(string publishedName)
+    {
+        var escapedPublishedName = publishedName.Replace("'", "''", StringComparison.Ordinal);
+        return $$"""
+            $ErrorActionPreference = 'Stop'
+            $publishedName = '{{escapedPublishedName}}'
+            pnputil /delete-driver "$publishedName" /uninstall
+            $deleteExitCode = $LASTEXITCODE
+            if ($deleteExitCode -ne 0) {
+              throw "pnputil /delete-driver failed with exit code $deleteExitCode."
+            }
+            pnputil /scan-devices
+            $scanExitCode = $LASTEXITCODE
+            if ($scanExitCode -ne 0) {
+              throw "pnputil /scan-devices failed with exit code $scanExitCode."
+            }
+            "Deleted AMD driver package: $publishedName"
+            """;
+    }
 }
 
 internal static class DeviceDiscovery
@@ -1113,6 +1396,462 @@ internal static class ServiceDiscovery
     }
 }
 
+internal static class DriverDiscovery
+{
+    public static AmdDriverInventory GetAmdDriverInventory()
+    {
+        var devices = DeviceDiscovery.GetAmdDisplayDevices();
+        var targetDevice = SelectTargetDevice(devices);
+        var activeDrivers = GetAmdSignedDisplayDrivers();
+        var targetDriverMatches = targetDevice is null
+            ? []
+            : activeDrivers
+                .Where(driver => string.Equals(driver.DeviceId, targetDevice.InstanceId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        var activeDriver = targetDriverMatches.Length switch
+        {
+            1 => targetDriverMatches[0],
+            _ when targetDevice is null && activeDrivers.Count == 1 => activeDrivers[0],
+            _ => null
+        };
+
+        var packages = GetAmdDriverPackages();
+        var matchedPackages = activeDriver is null
+            ? []
+            : packages
+                .Where(package =>
+                    string.Equals(package.PublishedName, activeDriver.InfName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(package.OriginalName, activeDriver.InfName, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        var activeCorrelationAmbiguous =
+            targetDevice is not null &&
+            (targetDriverMatches.Length != 1 || matchedPackages.Length != 1);
+
+        var packageInfos = packages
+            .Select(package => package with
+            {
+                IsActive = matchedPackages.Any(match => string.Equals(match.PublishedName, package.PublishedName, StringComparison.OrdinalIgnoreCase)),
+                CouldBeActive = activeCorrelationAmbiguous
+            })
+            .ToArray();
+
+        return new AmdDriverInventory(
+            devices,
+            targetDevice,
+            activeDrivers,
+            activeDriver,
+            packageInfos,
+            !activeCorrelationAmbiguous && matchedPackages.Length == 1,
+            activeCorrelationAmbiguous);
+    }
+
+    private static DisplayDeviceInfo? SelectTargetDevice(IReadOnlyList<DisplayDeviceInfo> devices)
+    {
+        return devices.Count switch
+        {
+            0 => null,
+            1 => devices[0],
+            _ => devices.FirstOrDefault(device => device.Present) ?? devices[0]
+        };
+    }
+
+    private static IReadOnlyList<ActiveDisplayDriverInfo> GetAmdSignedDisplayDrivers()
+    {
+        const string script = """
+            $drivers = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
+              Where-Object {
+                $_.DeviceClass -eq 'DISPLAY' -and (
+                  $_.Manufacturer -match 'AMD|Advanced Micro Devices' -or
+                  $_.DriverProviderName -match 'AMD|Advanced Micro Devices' -or
+                  $_.DeviceName -match 'AMD|Radeon|RX'
+                )
+              } |
+              Select-Object DeviceName, DeviceID, Manufacturer, DriverProviderName, InfName, DriverVersion, DriverDate, FriendlyName
+            $drivers | ConvertTo-Json -Compress
+            """;
+
+        var output = Program.RunPowerShell(script);
+        var json = PowerShellJson.ExtractJson(output);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+            {
+                return JsonSerializer.Deserialize<List<ActiveDisplayDriverInfo>>(json) ?? [];
+            }
+
+            var single = JsonSerializer.Deserialize<ActiveDisplayDriverInfo>(json);
+            return single is null ? [] : [single];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<DriverPackageInfo> GetAmdDriverPackages()
+    {
+        var output = Program.RunPowerShell("pnputil /enum-drivers /class Display /format csv");
+        var csv = ExtractCommandOutput(output);
+        if (string.IsNullOrWhiteSpace(csv))
+        {
+            return [];
+        }
+
+        var lines = csv
+            .Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+
+        if (lines.Length < 2)
+        {
+            return [];
+        }
+
+        var packages = new List<DriverPackageInfo>();
+        foreach (var line in lines.Skip(1))
+        {
+            var fields = CsvUtility.ParseLine(line);
+            if (fields.Count < 10)
+            {
+                continue;
+            }
+
+            var providerName = fields[2];
+            var className = fields[3];
+            if (!IsAmdProvider(providerName) || !string.Equals(className, "Display", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var (driverDate, driverVersion, driverDateSortKey) = ParseDriverVersionField(fields[7]);
+            packages.Add(new DriverPackageInfo(
+                PublishedName: fields[0],
+                OriginalName: NullIfWhiteSpace(fields[1]),
+                ProviderName: NullIfWhiteSpace(providerName),
+                ClassName: NullIfWhiteSpace(className),
+                ClassGuid: NullIfWhiteSpace(fields[4]),
+                DriverDate: driverDate,
+                DriverVersion: driverVersion,
+                SignerName: NullIfWhiteSpace(fields[8]),
+                DriverDateSortKey: driverDateSortKey,
+                DriverVersionSortKey: driverVersion ?? string.Empty,
+                IsActive: false,
+                CouldBeActive: false));
+        }
+
+        return packages;
+    }
+
+    private static bool IsAmdProvider(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               (value.Contains("AMD", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("Advanced Micro Devices", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static (string? DriverDate, string? DriverVersion, DateTime DriverDateSortKey) ParseDriverVersionField(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return (null, null, DateTime.MinValue);
+        }
+
+        var trimmed = value.Trim();
+        var lastSpaceIndex = trimmed.LastIndexOf(' ');
+        if (lastSpaceIndex <= 0 || lastSpaceIndex == trimmed.Length - 1)
+        {
+            return (trimmed, null, DateTime.MinValue);
+        }
+
+        var driverDate = trimmed[..lastSpaceIndex].Trim();
+        var driverVersion = trimmed[(lastSpaceIndex + 1)..].Trim();
+        var dateSortKey = DateTime.TryParse(driverDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) ||
+                          DateTime.TryParse(driverDate, CultureInfo.CurrentCulture, DateTimeStyles.None, out parsedDate)
+            ? parsedDate
+            : DateTime.MinValue;
+
+        return (driverDate, driverVersion, dateSortKey);
+    }
+
+    private static string ExtractCommandOutput(string output)
+    {
+        return string.Join(
+            Environment.NewLine,
+            output
+                .Split([Environment.NewLine], StringSplitOptions.None)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Where(line => !line.StartsWith("Command:", StringComparison.Ordinal))
+                .Where(line => !line.StartsWith("ExitCode:", StringComparison.Ordinal))
+                .Where(line => !string.Equals(line, "stderr:", StringComparison.Ordinal)));
+    }
+
+    private static string? NullIfWhiteSpace(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+}
+
+internal static class DriverInventoryReportWriter
+{
+    public static string WriteReport(string outputDirectory, AmdDriverInventory inventory)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        var path = Path.Combine(outputDirectory, $"amd-driver-report-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+        File.WriteAllText(path, BuildReport(inventory), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return path;
+    }
+
+    public static string BuildListSummary(AmdDriverInventory inventory, string reportPath)
+    {
+        var targetSummary = inventory.TargetDevice is null
+            ? "No AMD display device was found."
+            : $"Target device: {inventory.TargetDevice.FriendlyName ?? inventory.TargetDevice.InstanceId}.";
+        var activeSummary = inventory.ActiveDriver is null
+            ? "Active driver package could not be determined."
+            : $"Active INF: {inventory.ActiveDriver.InfName ?? "unknown"}.";
+
+        return $"{targetSummary}{Environment.NewLine}{activeSummary}{Environment.NewLine}Found {inventory.Packages.Count} AMD driver package(s).{Environment.NewLine}Report: {reportPath}";
+    }
+
+    public static string BuildSwitchSummary(DriverPackageInfo selectedPackage, AmdDriverInventory inventory, string reportPath, UtilityExecutionResult result)
+    {
+        var activePackage = inventory.Packages.FirstOrDefault(package => package.IsActive);
+        var activeSummary = activePackage is null
+            ? "The active package after the switch could not be confirmed."
+            : $"Active package now appears to be {activePackage.PublishedName} ({activePackage.DisplayVersionAndDate}).";
+
+        return $"{result.Summary}{Environment.NewLine}{activeSummary}{Environment.NewLine}Report: {reportPath}";
+    }
+
+    public static string BuildDeleteSummary(DriverPackageInfo selectedPackage, AmdDriverInventory inventory, string reportPath, UtilityExecutionResult result)
+    {
+        var remainingPackages = inventory.Packages.Count;
+        return $"{result.Summary}{Environment.NewLine}Remaining AMD packages: {remainingPackages}.{Environment.NewLine}Report: {reportPath}";
+    }
+
+    private static string BuildReport(AmdDriverInventory inventory)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("AMD Driver Inventory");
+        builder.AppendLine(new string('=', 80));
+        builder.AppendLine($"Captured: {DateTimeOffset.Now:O}");
+        builder.AppendLine();
+        builder.AppendLine("Target AMD Display Device");
+        builder.AppendLine(new string('-', 80));
+
+        if (inventory.TargetDevice is null)
+        {
+            builder.AppendLine("No AMD display device was found.");
+        }
+        else
+        {
+            builder.AppendLine($"Friendly Name: {inventory.TargetDevice.FriendlyName ?? "unknown"}");
+            builder.AppendLine($"Instance ID: {inventory.TargetDevice.InstanceId}");
+            builder.AppendLine($"Present: {inventory.TargetDevice.Present}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("Active Signed Driver");
+        builder.AppendLine(new string('-', 80));
+
+        if (inventory.ActiveDriver is null)
+        {
+            builder.AppendLine("Active AMD signed driver could not be determined.");
+        }
+        else
+        {
+            builder.AppendLine($"Device Name: {inventory.ActiveDriver.DeviceName ?? "unknown"}");
+            builder.AppendLine($"Device ID: {inventory.ActiveDriver.DeviceId ?? "unknown"}");
+            builder.AppendLine($"Provider: {inventory.ActiveDriver.DriverProviderName ?? inventory.ActiveDriver.Manufacturer ?? "unknown"}");
+            builder.AppendLine($"INF: {inventory.ActiveDriver.InfName ?? "unknown"}");
+            builder.AppendLine($"Version: {inventory.ActiveDriver.DriverVersion ?? "unknown"}");
+            builder.AppendLine($"Date: {inventory.ActiveDriver.DriverDate ?? "unknown"}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("Driver Store Packages");
+        builder.AppendLine(new string('-', 80));
+
+        if (inventory.Packages.Count == 0)
+        {
+            builder.AppendLine("No AMD display driver packages were found.");
+        }
+        else
+        {
+            foreach (var package in inventory.Packages.OrderByDescending(package => package.DriverDateSortKey).ThenBy(package => package.PublishedName, StringComparer.OrdinalIgnoreCase))
+            {
+                var marker = package.IsActive ? "[ACTIVE]" : package.CouldBeActive ? "[POSSIBLY ACTIVE]" : "[AVAILABLE]";
+                builder.AppendLine($"{marker} {package.PublishedName}");
+                builder.AppendLine($"  Original INF: {package.OriginalName ?? "unknown"}");
+                builder.AppendLine($"  Provider: {package.ProviderName ?? "unknown"}");
+                builder.AppendLine($"  Class: {package.ClassName ?? "unknown"}");
+                builder.AppendLine($"  Class GUID: {package.ClassGuid ?? "unknown"}");
+                builder.AppendLine($"  Version: {package.DriverVersion ?? "unknown"}");
+                builder.AppendLine($"  Date: {package.DriverDate ?? "unknown"}");
+                builder.AppendLine($"  Signer: {package.SignerName ?? "unknown"}");
+            }
+        }
+
+        if (inventory.ActivePackageCorrelationAmbiguous)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Warning");
+            builder.AppendLine(new string('-', 80));
+            builder.AppendLine("The app could not confidently correlate the active AMD display device to exactly one driver-store package. Destructive driver actions are blocked.");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+}
+
+internal static class DriverPackageSelectionDialog
+{
+    public static DriverPackageInfo? Select(string title, string prompt, IReadOnlyList<DriverPackageInfo> packages)
+    {
+        using var form = new Form
+        {
+            Text = title,
+            StartPosition = FormStartPosition.CenterScreen,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(720, 360)
+        };
+
+        var promptLabel = new Label
+        {
+            AutoSize = false,
+            Dock = DockStyle.Top,
+            Height = 42,
+            Padding = new Padding(12, 12, 12, 0),
+            Text = prompt
+        };
+
+        var listBox = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            IntegralHeight = false,
+            Font = SystemFonts.MessageBoxFont,
+            DisplayMember = nameof(DriverPackageInfo.SelectionLabel)
+        };
+
+        foreach (var package in packages)
+        {
+            listBox.Items.Add(package);
+        }
+
+        if (listBox.Items.Count > 0)
+        {
+            listBox.SelectedIndex = 0;
+        }
+
+        listBox.DoubleClick += (_, _) =>
+        {
+            if (listBox.SelectedItem is not null)
+            {
+                form.DialogResult = DialogResult.OK;
+                form.Close();
+            }
+        };
+
+        var buttonsPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            FlowDirection = FlowDirection.RightToLeft,
+            Padding = new Padding(12),
+            Height = 58
+        };
+
+        var okButton = new Button
+        {
+            Text = "OK",
+            DialogResult = DialogResult.OK,
+            AutoSize = true
+        };
+
+        var cancelButton = new Button
+        {
+            Text = "Cancel",
+            DialogResult = DialogResult.Cancel,
+            AutoSize = true
+        };
+
+        buttonsPanel.Controls.Add(okButton);
+        buttonsPanel.Controls.Add(cancelButton);
+
+        form.AcceptButton = okButton;
+        form.CancelButton = cancelButton;
+        form.Controls.Add(listBox);
+        form.Controls.Add(buttonsPanel);
+        form.Controls.Add(promptLabel);
+
+        return form.ShowDialog() == DialogResult.OK
+            ? listBox.SelectedItem as DriverPackageInfo
+            : null;
+    }
+}
+
+internal static class CsvUtility
+{
+    public static IReadOnlyList<string> ParseLine(string line)
+    {
+        var values = new List<string>();
+        var builder = new StringBuilder();
+        var inQuotes = false;
+
+        for (var i = 0; i < line.Length; i++)
+        {
+            var ch = line[i];
+            if (ch == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    builder.Append('"');
+                    i++;
+                    continue;
+                }
+
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (ch == ',' && !inQuotes)
+            {
+                values.Add(builder.ToString());
+                builder.Clear();
+                continue;
+            }
+
+            builder.Append(ch);
+        }
+
+        values.Add(builder.ToString());
+        return values;
+    }
+}
+
+internal sealed class DriverPackageVersionComparer : IComparer<string>
+{
+    public static DriverPackageVersionComparer Instance { get; } = new();
+
+    public int Compare(string? x, string? y)
+    {
+        if (Version.TryParse(x, out var left) && Version.TryParse(y, out var right))
+        {
+            return left.CompareTo(right);
+        }
+
+        return StringComparer.OrdinalIgnoreCase.Compare(x, y);
+    }
+}
+
 internal static class PowerShellJson
 {
     public static string ExtractJson(string output)
@@ -1147,6 +1886,42 @@ internal static class PowerShellJson
 internal sealed record DisplayDeviceInfo(string? FriendlyName, string InstanceId, bool Present);
 internal sealed record ServiceInfo(string ServiceName, string DisplayName);
 internal sealed record UtilityExecutionResult(bool Success, string Summary);
+internal sealed record ActiveDisplayDriverInfo(
+    string? DeviceName,
+    string? DeviceId,
+    string? Manufacturer,
+    string? DriverProviderName,
+    string? InfName,
+    string? DriverVersion,
+    string? DriverDate,
+    string? FriendlyName);
+internal sealed record DriverPackageInfo(
+    string PublishedName,
+    string? OriginalName,
+    string? ProviderName,
+    string? ClassName,
+    string? ClassGuid,
+    string? DriverDate,
+    string? DriverVersion,
+    string? SignerName,
+    DateTime DriverDateSortKey,
+    string DriverVersionSortKey,
+    bool IsActive,
+    bool CouldBeActive)
+{
+    public string DisplayVersionAndDate => $"{DriverVersion ?? "unknown"} / {DriverDate ?? "unknown"}";
+
+    public string SelectionLabel
+        => $"{PublishedName} | {DriverVersion ?? "unknown"} | {DriverDate ?? "unknown"} | {ProviderName ?? "unknown"}";
+}
+internal sealed record AmdDriverInventory(
+    IReadOnlyList<DisplayDeviceInfo> Devices,
+    DisplayDeviceInfo? TargetDevice,
+    IReadOnlyList<ActiveDisplayDriverInfo> ActiveDrivers,
+    ActiveDisplayDriverInfo? ActiveDriver,
+    IReadOnlyList<DriverPackageInfo> Packages,
+    bool HasConfirmedActivePackage,
+    bool ActivePackageCorrelationAmbiguous);
 
 internal sealed class MonitorStatus
 {

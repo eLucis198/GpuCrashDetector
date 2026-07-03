@@ -32,6 +32,7 @@ Tray menu actions:
 - capture a snapshot manually
 - enable or disable run on login
 - open the `Utilities` submenu for manual recovery actions
+- open the `Driver Utilities` submenu for manual AMD driver actions
 - exit the app
 
 The tray menu can enable startup on login by itself. It writes a per-user Windows Run entry, so no separate installer is required for normal use.
@@ -48,6 +49,22 @@ The tray app includes a manual `Utilities` submenu. These actions do not run aut
   - leaves unrelated files in the reports folder alone
 - `Recover AMD Display Device`
   - discovers an AMD display adapter, enables it, restarts it, and scans for hardware changes
+  - requests elevation only when you click it
+
+## Driver Utilities
+
+The tray app also includes a manual `Driver Utilities` submenu. These actions do not run automatically.
+
+- `List AMD Drivers`
+  - discovers the targeted AMD display adapter, the active signed AMD display driver, and AMD display packages already present in the Windows driver store
+  - writes a detailed `amd-driver-report-*.txt` inventory report in the app output folder
+- `Switch AMD Driver`
+  - lets you pick a different already-installed AMD display driver package from the Windows driver store
+  - requests elevation only when you click it
+  - exports the selected stored package and reapplies it to the AMD display device
+- `Delete AMD Driver Package`
+  - lets you remove only non-active AMD display driver packages
+  - blocks deletion when the active package cannot be correlated confidently
   - requests elevation only when you click it
 
 ## Run From Source
