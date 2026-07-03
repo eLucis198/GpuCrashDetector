@@ -21,7 +21,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore .\GpuCrashDetector\GpuCrashDetector.csproj --source https://api.nuget.org/v3/index.json
+        run: >
+          dotnet restore .\GpuCrashDetector\GpuCrashDetector.csproj
+          -r win-x64
+          --source https://api.nuget.org/v3/index.json
 
       - name: Publish self-contained executable
         run: >
