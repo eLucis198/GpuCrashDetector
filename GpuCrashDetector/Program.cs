@@ -1,32 +1,30 @@
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
-using System.Text;
+using System.Drawing;
 using System.Runtime.Versioning;
+using System.Text;
+using System.Windows.Forms;
 
 namespace GpuCrashDetector;
 
 internal static class Program
 {
+    [STAThread]
     private static int Main(string[] args)
     {
         if (!OperatingSystem.IsWindows())
         {
-            Console.Error.WriteLine("GpuCrashDetector only supports Windows.");
             return 1;
         }
 
         var options = AppOptions.Parse(args);
         Directory.CreateDirectory(options.OutputDirectory);
 
-        using var cancellation = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            cancellation.Cancel();
-        };
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
 
-        var monitor = new GpuMonitor(options);
-        monitor.Run(cancellation.Token);
+        using var appContext = new TrayApplicationContext(options);
+        Application.Run(appContext);
         return 0;
     }
 
@@ -243,6 +241,205 @@ Get-WinEvent -FilterHashtable @{{ LogName = 'System'; ProviderName = 'Microsoft-
     }
 }
 
+internal sealed class TrayApplicationContext : ApplicationContext
+{
+    private readonly AppOptions _options;
+    private readonly MonitorStatus _status = new();
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly NotifyIcon _notifyIcon;
+    private readonly ContextMenuStrip _menu;
+    private readonly ToolStripMenuItem _stateItem;
+    private readonly ToolStripMenuItem _lastTriggerItem;
+    private readonly ToolStripMenuItem _lastSnapshotItem;
+    private readonly ToolStripMenuItem _logsPathItem;
+    private readonly System.Windows.Forms.Timer _refreshTimer;
+    private readonly GpuMonitor _monitor;
+    private readonly Task _monitorTask;
+
+    public TrayApplicationContext(AppOptions options)
+    {
+        _options = options;
+        _monitor = new GpuMonitor(_options, _status);
+
+        _stateItem = new ToolStripMenuItem();
+        _lastTriggerItem = new ToolStripMenuItem();
+        _lastSnapshotItem = new ToolStripMenuItem();
+        _logsPathItem = new ToolStripMenuItem();
+
+        _menu = new ContextMenuStrip();
+        _menu.Opening += (_, _) => RefreshMenu();
+        _menu.Items.AddRange(
+        [
+            _stateItem,
+            _lastTriggerItem,
+            _lastSnapshotItem,
+            _logsPathItem,
+            new ToolStripSeparator(),
+            new ToolStripMenuItem("Open Logs Folder", null, (_, _) => OpenLogsFolder()),
+            new ToolStripMenuItem("Open Latest Report", null, (_, _) => OpenLatestReport()),
+            new ToolStripMenuItem("Capture Snapshot Now", null, (_, _) => TriggerManualSnapshot()),
+            new ToolStripSeparator(),
+            new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication())
+        ]);
+
+        _notifyIcon = new NotifyIcon
+        {
+            Icon = SystemIcons.Information,
+            Visible = true,
+            ContextMenuStrip = _menu,
+            Text = "GPU Crash Detector"
+        };
+        _notifyIcon.DoubleClick += (_, _) => OpenLogsFolder();
+
+        _refreshTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+        _refreshTimer.Tick += (_, _) => RefreshMenu();
+        _refreshTimer.Start();
+
+        RefreshMenu();
+        ShowBalloon("GPU Crash Detector is running", ToolTipIcon.Info);
+
+        _monitorTask = Task.Run(() => _monitor.Run(_cancellation.Token), _cancellation.Token);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _refreshTimer.Stop();
+            _refreshTimer.Dispose();
+            _menu.Dispose();
+            _notifyIcon.Visible = false;
+            _notifyIcon.Dispose();
+            _cancellation.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void RefreshMenu()
+    {
+        var snapshot = _status.CreateSnapshot();
+        _stateItem.Text = $"Status: {snapshot.State}";
+        _stateItem.Enabled = false;
+        _lastTriggerItem.Text = $"Last Trigger: {Truncate(snapshot.LastTrigger ?? "none", 80)}";
+        _lastTriggerItem.Enabled = false;
+        _lastSnapshotItem.Text = $"Last Snapshot: {FormatTime(snapshot.LastSnapshotAt)}";
+        _lastSnapshotItem.Enabled = false;
+        _logsPathItem.Text = $"Logs: {Truncate(_options.OutputDirectory, 80)}";
+        _logsPathItem.Enabled = false;
+
+        _notifyIcon.Icon = snapshot.HasRecentError ? SystemIcons.Error : snapshot.HasRecentSnapshot ? SystemIcons.Warning : SystemIcons.Information;
+        _notifyIcon.Text = BuildTrayText(snapshot);
+    }
+
+    private void OpenLogsFolder()
+    {
+        Directory.CreateDirectory(_options.OutputDirectory);
+        OpenPath(_options.OutputDirectory);
+    }
+
+    private void OpenLatestReport()
+    {
+        var snapshot = _status.CreateSnapshot();
+        if (!string.IsNullOrWhiteSpace(snapshot.LastReportPath) && File.Exists(snapshot.LastReportPath))
+        {
+            OpenPath(snapshot.LastReportPath);
+            return;
+        }
+
+        var latest = Directory.Exists(_options.OutputDirectory)
+            ? Directory.GetFiles(_options.OutputDirectory, "gpu-diagnostic-report-*.txt")
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault()
+            : null;
+
+        if (!string.IsNullOrWhiteSpace(latest))
+        {
+            OpenPath(latest);
+            return;
+        }
+
+        ShowBalloon("No report has been generated yet.", ToolTipIcon.Info);
+    }
+
+    private void TriggerManualSnapshot()
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                _monitor.RequestManualSnapshot("manual snapshot from tray menu");
+                ShowBalloon("Manual snapshot requested.", ToolTipIcon.Info);
+            }
+            catch (Exception ex)
+            {
+                _status.RecordError(ex);
+                ShowBalloon("Manual snapshot request failed.", ToolTipIcon.Error);
+            }
+        });
+    }
+
+    private void ExitApplication()
+    {
+        _refreshTimer.Stop();
+        _notifyIcon.Visible = false;
+        _cancellation.Cancel();
+
+        try
+        {
+            _monitorTask.Wait(TimeSpan.FromSeconds(5));
+        }
+        catch (AggregateException)
+        {
+        }
+
+        ExitThread();
+    }
+
+    private void OpenPath(string path)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = path,
+            UseShellExecute = true
+        });
+    }
+
+    private void ShowBalloon(string message, ToolTipIcon icon)
+    {
+        _notifyIcon.BalloonTipTitle = "GPU Crash Detector";
+        _notifyIcon.BalloonTipText = message;
+        _notifyIcon.BalloonTipIcon = icon;
+        _notifyIcon.ShowBalloonTip(3000);
+    }
+
+    private static string BuildTrayText(MonitorStatusSnapshot snapshot)
+    {
+        var text = snapshot.HasRecentError
+            ? $"GPU Crash Detector - Error - {snapshot.State}"
+            : snapshot.HasRecentSnapshot
+                ? $"GPU Crash Detector - Snapshot captured - {snapshot.State}"
+                : $"GPU Crash Detector - {snapshot.State}";
+
+        return Truncate(text, 63);
+    }
+
+    private static string FormatTime(DateTimeOffset? value)
+    {
+        return value?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "none";
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..(maxLength - 3)] + "...";
+    }
+}
+
 internal sealed class DiagnosticReport
 {
     private readonly List<ReportSection> _sections = [];
@@ -356,6 +553,92 @@ internal sealed class AppOptions
     }
 }
 
+internal sealed class MonitorStatus
+{
+    private readonly Lock _lock = new();
+    private string _state = "Starting";
+    private string? _lastTrigger;
+    private DateTimeOffset? _lastSnapshotAt;
+    private string? _lastReportPath;
+    private string? _lastError;
+    private DateTimeOffset? _lastErrorAt;
+
+    public void SetState(string state)
+    {
+        lock (_lock)
+        {
+            _state = state;
+        }
+    }
+
+    public void RecordTrigger(string trigger)
+    {
+        lock (_lock)
+        {
+            _lastTrigger = trigger;
+            _state = "Collecting snapshot";
+        }
+    }
+
+    public void RecordSnapshot(string trigger, string reportPath)
+    {
+        lock (_lock)
+        {
+            _lastTrigger = trigger;
+            _lastSnapshotAt = DateTimeOffset.Now;
+            _lastReportPath = reportPath;
+            _state = "Monitoring";
+        }
+    }
+
+    public void RecordError(Exception ex)
+    {
+        lock (_lock)
+        {
+            _lastError = ex.Message;
+            _lastErrorAt = DateTimeOffset.Now;
+            _state = "Error";
+        }
+    }
+
+    public void RecordMessageError(string message)
+    {
+        lock (_lock)
+        {
+            _lastError = message;
+            _lastErrorAt = DateTimeOffset.Now;
+            _state = "Error";
+        }
+    }
+
+    public MonitorStatusSnapshot CreateSnapshot()
+    {
+        lock (_lock)
+        {
+            var hasRecentSnapshot = _lastSnapshotAt.HasValue && DateTimeOffset.Now - _lastSnapshotAt.Value < TimeSpan.FromMinutes(5);
+            var hasRecentError = _lastErrorAt.HasValue && DateTimeOffset.Now - _lastErrorAt.Value < TimeSpan.FromMinutes(10);
+
+            return new MonitorStatusSnapshot(
+                _state,
+                _lastTrigger,
+                _lastSnapshotAt,
+                _lastReportPath,
+                _lastError,
+                hasRecentSnapshot,
+                hasRecentError);
+        }
+    }
+}
+
+internal sealed record MonitorStatusSnapshot(
+    string State,
+    string? LastTrigger,
+    DateTimeOffset? LastSnapshotAt,
+    string? LastReportPath,
+    string? LastError,
+    bool HasRecentSnapshot,
+    bool HasRecentError);
+
 [SupportedOSPlatform("windows")]
 internal sealed class GpuMonitor
 {
@@ -376,24 +659,23 @@ internal sealed class GpuMonitor
     ];
 
     private readonly AppOptions _options;
+    private readonly MonitorStatus _status;
     private DateTimeOffset _lastEventCheckUtc;
     private string? _lastArtifactFingerprint;
     private readonly Lock _snapshotLock = new();
     private DateTimeOffset _lastSnapshotAtUtc = DateTimeOffset.MinValue;
 
-    public GpuMonitor(AppOptions options)
+    public GpuMonitor(AppOptions options, MonitorStatus status)
     {
         _options = options;
+        _status = status;
         _lastEventCheckUtc = DateTimeOffset.UtcNow.AddDays(-options.Days);
     }
 
     public void Run(CancellationToken cancellationToken)
     {
-        Console.WriteLine("GPU background monitor started.");
-        Console.WriteLine($"Reports directory: {_options.OutputDirectory}");
-        Console.WriteLine($"Event log subscriptions: real-time");
-        Console.WriteLine($"Fallback event poll: {_options.PollIntervalSeconds} seconds");
-        Console.WriteLine($"Crash artifact poll: {_options.ArtifactPollIntervalSeconds} seconds. Press Ctrl+C to stop.");
+        _status.SetState("Monitoring");
+        AppendMonitorLog($"[{DateTimeOffset.Now:O}] GPU background monitor started.");
 
         using var systemWatcher = CreateWatcher("System");
         using var applicationWatcher = CreateWatcher("Application");
@@ -435,13 +717,20 @@ internal sealed class GpuMonitor
             }
             catch (Exception ex)
             {
+                _status.RecordError(ex);
                 AppendMonitorLog($"[{DateTimeOffset.Now:O}] monitor error: {ex}");
             }
 
             cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
         }
 
-        Console.WriteLine("GPU background monitor stopped.");
+        _status.SetState("Stopped");
+        AppendMonitorLog($"[{DateTimeOffset.Now:O}] GPU background monitor stopped.");
+    }
+
+    public void RequestManualSnapshot(string triggerReason)
+    {
+        CaptureSnapshot(triggerReason);
     }
 
     private EventLogWatcher CreateWatcher(string logName)
@@ -452,6 +741,7 @@ internal sealed class GpuMonitor
         {
             if (args.EventException is not null)
             {
+                _status.RecordMessageError(args.EventException.Message);
                 AppendMonitorLog($"[{DateTimeOffset.Now:O}] event watcher error ({logName}): {args.EventException}");
                 return;
             }
@@ -578,16 +868,12 @@ Get-WinEvent -FilterHashtable @{{ LogName = @('System', 'Application'); StartTim
             _lastSnapshotAtUtc = nowUtc;
         }
 
+        _status.RecordTrigger(triggerReason);
         var report = Program.CollectDiagnosticReport(_options, triggerReason);
         var reportPath = Path.Combine(_options.OutputDirectory, $"gpu-diagnostic-report-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
         File.WriteAllText(reportPath, report.Render(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
-        Console.WriteLine($"[{DateTimeOffset.Now:O}] snapshot written: {reportPath}");
-        if (!string.IsNullOrWhiteSpace(report.DxDiagPath))
-        {
-            Console.WriteLine($"[{DateTimeOffset.Now:O}] dxdiag written: {report.DxDiagPath}");
-        }
-
+        _status.RecordSnapshot(triggerReason, reportPath);
         AppendMonitorLog(report.RenderSummary(reportPath, report.DxDiagPath ?? "not generated"));
     }
 
