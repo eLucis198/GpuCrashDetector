@@ -7,13 +7,16 @@ It runs in the system tray, watches Windows event logs and crash-artifact folder
 ## Project Layout
 
 - `GpuCrashDetector/`
-  - .NET console monitor
-  - startup-task installer scripts
+  - .NET tray monitor
+  - publish and startup-task installer scripts
+- `release/windows/`
+  - Windows release package
 
 ## Requirements
 
 - Windows
-- .NET 10 SDK
+- .NET 10 SDK to build from source
+- .NET 10 Desktop Runtime to run the packaged release
 
 ## Tray Behavior
 
@@ -68,22 +71,35 @@ Example:
 .\bin\Debug\net10.0-windows\GpuCrashDetector.exe --interval-seconds 5 --artifact-interval-seconds 2 --days 1
 ```
 
-## Publish Self-Contained EXE
+## Publish Repo Release Package
 
 From `C:\Users\cfp\Documents\detector\GpuCrashDetector`:
 
 ```powershell
-$env:APPDATA = Join-Path $PWD '.appdata'
-$env:USERPROFILE = Join-Path $PWD '.userprofile'
-$env:HOME = $env:USERPROFILE
-$env:NUGET_PACKAGES = Join-Path $PWD '.nuget-packages'
-
-dotnet publish -c Release -r win-x64 --self-contained true
+.\publish-release.cmd
 ```
 
-Published executable:
+This creates a tracked Windows release package at:
 
-`GpuCrashDetector\bin\Release\net10.0-windows\win-x64\publish\GpuCrashDetector.exe`
+`release\windows\GpuCrashDetector.exe`
+
+You can also run the PowerShell script directly:
+
+```powershell
+.\publish-release.ps1 -Configuration Release
+```
+
+## Run The Release EXE
+
+From `C:\Users\cfp\Documents\detector`:
+
+```powershell
+.\release\windows\GpuCrashDetector.exe --interval-seconds 5 --artifact-interval-seconds 2 --days 1
+```
+
+This starts the tray app in the background. The icon appears in the Windows notification area.
+
+Note: the default packaged release is framework-dependent, so the PC needs the matching .NET desktop runtime already installed. On this machine that is already true because the app is being built locally.
 
 ## Start Automatically On Login
 
@@ -110,6 +126,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-startup-task.ps1 `
   -ArtifactIntervalSeconds 2 `
   -Days 1
 ```
+
+The startup installer now publishes to the tracked release folder first, then registers:
+
+`release\windows\GpuCrashDetector.exe`
+
+## Release Output
+
+When you run the packaged EXE, generated diagnostics are written under:
+
+`release\windows\reports`
+
+That runtime output stays local and is ignored by Git.
 
 ## Notes
 

@@ -11,3 +11,4 @@ GpuCrashDetector/.userprofile/
 GpuCrashDetector/reports/
 GpuCrashDetector/reports-test/
 GpuCrashDetector/bin/**/reports/
+release/**/reports/

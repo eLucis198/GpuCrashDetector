@@ -4,7 +4,8 @@ param(
     [int]$ArtifactIntervalSeconds = 2,
     [int]$Days = 1,
     [string]$Configuration = "Release",
-    [string]$RuntimeIdentifier = "win-x64"
+    [string]$RuntimeIdentifier = "",
+    [string]$ReleaseRoot = ""
 )
 
 Set-StrictMode -Version Latest
@@ -23,24 +24,42 @@ if ($Days -lt 1) {
 }
 
 $projectRoot = $PSScriptRoot
-$appDataPath = Join-Path $projectRoot ".appdata"
-$userProfilePath = Join-Path $projectRoot ".userprofile"
-$nuGetPackagesPath = Join-Path $projectRoot ".nuget-packages"
+$repoRoot = Split-Path -Parent $projectRoot
+$publishScriptPath = Join-Path $projectRoot "publish-release.ps1"
 
-New-Item -ItemType Directory -Force -Path $appDataPath | Out-Null
-New-Item -ItemType Directory -Force -Path $userProfilePath | Out-Null
-New-Item -ItemType Directory -Force -Path $nuGetPackagesPath | Out-Null
-
-$env:APPDATA = $appDataPath
-$env:USERPROFILE = $userProfilePath
-$env:HOME = $userProfilePath
-$env:NUGET_PACKAGES = $nuGetPackagesPath
+if (-not (Test-Path -LiteralPath $publishScriptPath)) {
+    throw "Publish script was not found at '$publishScriptPath'."
+}
 
 Push-Location $projectRoot
 try {
-    dotnet publish -c $Configuration -r $RuntimeIdentifier --self-contained true
+    $publishParameters = @{
+        Configuration = $Configuration
+    }
 
-    $publishDirectory = Join-Path $projectRoot "bin\$Configuration\net10.0-windows\$RuntimeIdentifier\publish"
+    if (-not [string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
+        $publishParameters.RuntimeIdentifier = $RuntimeIdentifier
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ReleaseRoot)) {
+        $publishParameters.ReleaseRoot = $ReleaseRoot
+    }
+
+    & $publishScriptPath @publishParameters
+
+    $releaseDirectory = if ([string]::IsNullOrWhiteSpace($ReleaseRoot)) {
+        if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
+            Join-Path $repoRoot (Join-Path "release" "windows")
+        }
+        else {
+            Join-Path $repoRoot (Join-Path "release" $RuntimeIdentifier)
+        }
+    }
+    else {
+        [System.IO.Path]::GetFullPath($ReleaseRoot)
+    }
+
+    $publishDirectory = $releaseDirectory
     $executablePath = Join-Path $publishDirectory "GpuCrashDetector.exe"
 
     if (-not (Test-Path -LiteralPath $executablePath)) {
