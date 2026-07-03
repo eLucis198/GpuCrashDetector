@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Drawing;
+using Microsoft.Win32;
 using System.Runtime.Versioning;
 using System.Text;
 using System.Windows.Forms;
@@ -252,6 +253,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _lastTriggerItem;
     private readonly ToolStripMenuItem _lastSnapshotItem;
     private readonly ToolStripMenuItem _logsPathItem;
+    private readonly ToolStripMenuItem _startupItem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly GpuMonitor _monitor;
     private readonly Task _monitorTask;
@@ -265,6 +267,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _lastTriggerItem = new ToolStripMenuItem();
         _lastSnapshotItem = new ToolStripMenuItem();
         _logsPathItem = new ToolStripMenuItem();
+        _startupItem = new ToolStripMenuItem();
 
         _menu = new ContextMenuStrip();
         _menu.Opening += (_, _) => RefreshMenu();
@@ -278,6 +281,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             new ToolStripMenuItem("Open Logs Folder", null, (_, _) => OpenLogsFolder()),
             new ToolStripMenuItem("Open Latest Report", null, (_, _) => OpenLatestReport()),
             new ToolStripMenuItem("Capture Snapshot Now", null, (_, _) => TriggerManualSnapshot()),
+            _startupItem,
             new ToolStripSeparator(),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication())
         ]);
@@ -327,6 +331,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _lastSnapshotItem.Enabled = false;
         _logsPathItem.Text = $"Logs: {Truncate(_options.OutputDirectory, 80)}";
         _logsPathItem.Enabled = false;
+        _startupItem.Text = StartupRegistration.IsEnabled(_options)
+            ? "Disable Run On Login"
+            : "Enable Run On Login";
+        _startupItem.Enabled = true;
+        _startupItem.Click -= ToggleStartupRegistration;
+        _startupItem.Click += ToggleStartupRegistration;
 
         _notifyIcon.Icon = snapshot.HasRecentError ? SystemIcons.Error : snapshot.HasRecentSnapshot ? SystemIcons.Warning : SystemIcons.Information;
         _notifyIcon.Text = BuildTrayText(snapshot);
@@ -377,6 +387,30 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 ShowBalloon("Manual snapshot request failed.", ToolTipIcon.Error);
             }
         });
+    }
+
+    private void ToggleStartupRegistration(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (StartupRegistration.IsEnabled(_options))
+            {
+                StartupRegistration.Disable(_options);
+                ShowBalloon("Run on login disabled.", ToolTipIcon.Info);
+            }
+            else
+            {
+                StartupRegistration.Enable(_options);
+                ShowBalloon("Run on login enabled.", ToolTipIcon.Info);
+            }
+
+            RefreshMenu();
+        }
+        catch (Exception ex)
+        {
+            _status.RecordError(ex);
+            ShowBalloon("Failed to update run on login.", ToolTipIcon.Error);
+        }
     }
 
     private void ExitApplication()
@@ -498,6 +532,7 @@ internal sealed record ReportSection(string Title, string Content);
 
 internal sealed class AppOptions
 {
+    public const string StartupValueName = "GpuCrashDetector";
     public int Days { get; private init; } = 7;
     public int PollIntervalSeconds { get; private init; } = 30;
     public int ArtifactPollIntervalSeconds { get; private init; } = 5;
@@ -550,6 +585,80 @@ internal sealed class AppOptions
             CaptureBaselineOnStart = captureBaselineOnStart,
             OutputDirectory = Path.GetFullPath(outputDirectory ?? Path.Combine(AppContext.BaseDirectory, "reports"))
         };
+    }
+
+    public string BuildStartupArguments()
+    {
+        var arguments = new List<string>
+        {
+            "--interval-seconds", PollIntervalSeconds.ToString(),
+            "--artifact-interval-seconds", ArtifactPollIntervalSeconds.ToString(),
+            "--days", Days.ToString()
+        };
+
+        if (!CaptureBaselineOnStart)
+        {
+            arguments.Add("--no-baseline");
+        }
+
+        if (!string.Equals(OutputDirectory, Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "reports")), StringComparison.OrdinalIgnoreCase))
+        {
+            arguments.Add("--out");
+            arguments.Add(OutputDirectory);
+        }
+
+        return string.Join(" ", arguments.Select(QuoteArgument));
+    }
+
+    private static string QuoteArgument(string value)
+    {
+        return value.Contains(' ', StringComparison.Ordinal)
+            ? $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\""
+            : value;
+    }
+}
+
+internal static class StartupRegistration
+{
+    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+
+    public static bool IsEnabled(AppOptions options)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
+        var value = key?.GetValue(AppOptions.StartupValueName) as string;
+        return !string.IsNullOrWhiteSpace(value) &&
+               value.Contains(GetExecutablePath(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static void Enable(AppOptions options)
+    {
+        var command = BuildStartupCommand(options);
+
+        using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
+        key.SetValue(AppOptions.StartupValueName, command, RegistryValueKind.String);
+    }
+
+    public static void Disable(AppOptions options)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+        key?.DeleteValue(AppOptions.StartupValueName, throwOnMissingValue: false);
+    }
+
+    private static string BuildStartupCommand(AppOptions options)
+    {
+        return $"{QuoteExecutable(GetExecutablePath())} {options.BuildStartupArguments()}".Trim();
+    }
+
+    private static string GetExecutablePath()
+    {
+        return Environment.ProcessPath
+            ?? Process.GetCurrentProcess().MainModule?.FileName
+            ?? throw new InvalidOperationException("Could not determine the current executable path.");
+    }
+
+    private static string QuoteExecutable(string value)
+    {
+        return $"\"{value}\"";
     }
 }
 

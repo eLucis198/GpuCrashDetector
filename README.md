@@ -30,7 +30,10 @@ Tray menu actions:
 - open logs folder
 - open latest report
 - capture a snapshot manually
+- enable or disable run on login
 - exit the app
+
+The tray menu can enable startup on login by itself. It writes a per-user Windows Run entry, so no separate installer is required for normal use.
 
 ## Run From Source
 
@@ -101,6 +104,19 @@ This starts the tray app in the background. The icon appears in the Windows noti
 
 Note: the default packaged release is framework-dependent, so the PC needs the matching .NET desktop runtime already installed. On this machine that is already true because the app is being built locally.
 
+## Build EXE In GitHub
+
+The repo includes [build-release.yml](C:/Users/cfp/Documents/detector/.github/workflows/build-release.yml), which builds a self-contained `win-x64` executable in GitHub Actions.
+
+What it does:
+
+- restores and publishes the app on `windows-latest`
+- creates a single-file self-contained executable package
+- uploads `GpuCrashDetector-win-x64.zip` as a workflow artifact
+- attaches the zip to a GitHub Release when a release is published
+
+After the action runs, download the zip from GitHub, extract it, and run `GpuCrashDetector.exe`. Then use the tray menu option `Enable Run On Login` once if you want it to start automatically with Windows.
+
 ## Start Automatically On Login
 
 The project includes:
@@ -109,6 +125,8 @@ The project includes:
 - `GpuCrashDetector\install-startup-task.ps1`
 
 They publish the app and register a current-user Windows Scheduled Task that starts the EXE at logon.
+
+That path is optional now. The preferred flow is to launch the EXE and enable startup from the tray menu.
 
 Simple option:
 
@@ -142,5 +160,6 @@ That runtime output stays local and is ignored by Git.
 ## Notes
 
 - This is a tray-style Windows app and does not open a console window in normal use.
-- The startup installer uses Task Scheduler so the tray app starts automatically at login.
+- The preferred startup path is the tray app's built-in `Enable Run On Login` option.
+- The Task Scheduler installer scripts are still available as a fallback.
 - Generated reports and local environment folders are ignored by Git.

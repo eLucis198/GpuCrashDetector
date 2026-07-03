@@ -1,0 +1,53 @@
+name: build-release
+
+on:
+  push:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore .\GpuCrashDetector\GpuCrashDetector.csproj --source https://api.nuget.org/v3/index.json
+
+      - name: Publish self-contained executable
+        run: >
+          dotnet publish .\GpuCrashDetector\GpuCrashDetector.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          --no-restore
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o .\artifacts\win-x64
+
+      - name: Create archive
+        shell: pwsh
+        run: Compress-Archive -Path .\artifacts\win-x64\* -DestinationPath .\artifacts\GpuCrashDetector-win-x64.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GpuCrashDetector-win-x64
+          path: .\artifacts\GpuCrashDetector-win-x64.zip
+
+      - name: Attach archive to GitHub release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .\artifacts\GpuCrashDetector-win-x64.zip
