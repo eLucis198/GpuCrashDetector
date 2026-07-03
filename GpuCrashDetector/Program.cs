@@ -486,18 +486,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             try
             {
-                var devices = DeviceDiscovery.GetAmdDisplayDevices();
-                var targetDevice = devices.Count switch
-                {
-                    0 => null,
-                    1 => devices[0],
-                    _ => devices.FirstOrDefault(device => device.Present) ?? devices[0]
-                };
+                var inventory = DriverDiscovery.GetAmdDriverInventory();
+                var targetDevice = inventory.TargetDevice;
 
                 if (targetDevice is null)
                 {
-                    AppLog.Append(_options.OutputDirectory, "Recover AMD Display Device: no AMD display device found.");
-                    ShowResult("Recover AMD Display Device", "No AMD display device was found.", ToolTipIcon.Info);
+                    var summary = inventory.TargetDeviceResolution.Status switch
+                    {
+                        CorrelationStatus.Ambiguous => "The AMD display device could not be correlated confidently. Use 'List AMD Drivers' first.",
+                        _ => "No AMD display device was found."
+                    };
+
+                    AppLog.Append(_options.OutputDirectory, $"Recover AMD Display Device: {summary}");
+                    ShowResult("Recover AMD Display Device", summary, ToolTipIcon.Info);
                     return;
                 }
 
@@ -1323,14 +1324,11 @@ internal static class UtilityScriptBuilder
 
 internal static class DeviceDiscovery
 {
-    public static IReadOnlyList<DisplayDeviceInfo> GetAmdDisplayDevices()
+    public static IReadOnlyList<DisplayDeviceInfo> GetDisplayDevices()
     {
         const string script = """
             $devices = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue |
-              Where-Object {
-                $_.FriendlyName -match 'AMD|Radeon|RX'
-              } |
-              Select-Object FriendlyName, InstanceId, Present
+              Select-Object FriendlyName, InstanceId, Present, Status
             $devices | ConvertTo-Json -Compress
             """;
 
@@ -1400,61 +1398,223 @@ internal static class DriverDiscovery
 {
     public static AmdDriverInventory GetAmdDriverInventory()
     {
-        var devices = DeviceDiscovery.GetAmdDisplayDevices();
-        var targetDevice = SelectTargetDevice(devices);
+        var devices = DeviceDiscovery.GetDisplayDevices();
+        var videoControllers = GetAmdVideoControllers();
         var activeDrivers = GetAmdSignedDisplayDrivers();
+        var targetResolution = ResolveTargetDevice(videoControllers, activeDrivers, devices);
+        var targetDevice = targetResolution.Device;
+
         var targetDriverMatches = targetDevice is null
             ? []
             : activeDrivers
-                .Where(driver => string.Equals(driver.DeviceId, targetDevice.InstanceId, StringComparison.OrdinalIgnoreCase))
+                .Where(driver => string.Equals(driver.NormalizedDeviceId, targetDevice.NormalizedDeviceId, StringComparison.Ordinal))
                 .ToArray();
 
         var activeDriver = targetDriverMatches.Length switch
         {
             1 => targetDriverMatches[0],
-            _ when targetDevice is null && activeDrivers.Count == 1 => activeDrivers[0],
             _ => null
         };
 
+        var activeDriverStatus = targetDevice is null
+            ? CorrelationStatus.None
+            : targetDriverMatches.Length switch
+            {
+                1 => CorrelationStatus.Confirmed,
+                0 => CorrelationStatus.None,
+                _ => CorrelationStatus.Ambiguous
+            };
+
         var packages = GetAmdDriverPackages();
-        var matchedPackages = activeDriver is null
-            ? []
-            : packages
-                .Where(package =>
-                    string.Equals(package.PublishedName, activeDriver.InfName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(package.OriginalName, activeDriver.InfName, StringComparison.OrdinalIgnoreCase))
+        var possibleInfNames = activeDriver is not null
+            ? activeDriver.InfName.AsSingleItemArray()
+            : targetDriverMatches
+                .Select(driver => driver.InfName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+        var matchedPackages = possibleInfNames
+            .SelectMany(infName => packages.Where(package => PackageMatchesInf(package, infName!)))
+            .DistinctBy(package => package.PublishedName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         var activeCorrelationAmbiguous =
-            targetDevice is not null &&
-            (targetDriverMatches.Length != 1 || matchedPackages.Length != 1);
+            targetResolution.Status == CorrelationStatus.Ambiguous ||
+            activeDriverStatus == CorrelationStatus.Ambiguous ||
+            (activeDriverStatus == CorrelationStatus.Confirmed && matchedPackages.Length > 1);
 
         var packageInfos = packages
             .Select(package => package with
             {
-                IsActive = matchedPackages.Any(match => string.Equals(match.PublishedName, package.PublishedName, StringComparison.OrdinalIgnoreCase)),
-                CouldBeActive = activeCorrelationAmbiguous
+                IsActive =
+                    activeDriverStatus == CorrelationStatus.Confirmed &&
+                    matchedPackages.Length == 1 &&
+                    matchedPackages.Any(match => string.Equals(match.PublishedName, package.PublishedName, StringComparison.OrdinalIgnoreCase)),
+                CouldBeActive =
+                    activeCorrelationAmbiguous &&
+                    matchedPackages.Any(match => string.Equals(match.PublishedName, package.PublishedName, StringComparison.OrdinalIgnoreCase))
             })
             .ToArray();
 
         return new AmdDriverInventory(
             devices,
+            targetResolution,
             targetDevice,
             activeDrivers,
+            activeDriverStatus,
             activeDriver,
             packageInfos,
-            !activeCorrelationAmbiguous && matchedPackages.Length == 1,
+            activeDriverStatus == CorrelationStatus.Confirmed && matchedPackages.Length == 1,
             activeCorrelationAmbiguous);
     }
 
-    private static DisplayDeviceInfo? SelectTargetDevice(IReadOnlyList<DisplayDeviceInfo> devices)
+    private static AmdTargetDeviceResolution ResolveTargetDevice(
+        IReadOnlyList<VideoControllerInfo> videoControllers,
+        IReadOnlyList<ActiveDisplayDriverInfo> activeDrivers,
+        IReadOnlyList<DisplayDeviceInfo> devices)
     {
-        return devices.Count switch
+        var pnpById = devices
+            .Where(device => !string.IsNullOrWhiteSpace(device.NormalizedInstanceId))
+            .GroupBy(device => device.NormalizedInstanceId!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+        var candidates = new Dictionary<string, MutableAmdTargetCandidate>(StringComparer.Ordinal);
+
+        foreach (var controller in videoControllers)
         {
-            0 => null,
-            1 => devices[0],
-            _ => devices.FirstOrDefault(device => device.Present) ?? devices[0]
+            if (string.IsNullOrWhiteSpace(controller.NormalizedDeviceId))
+            {
+                continue;
+            }
+
+            var candidate = GetOrCreateCandidate(candidates, controller.NormalizedDeviceId!, pnpById);
+            candidate.FromVideoController = true;
+            candidate.InstanceId ??= controller.PnpDeviceId;
+            candidate.DeviceName ??= controller.Name;
+            candidate.Status ??= controller.Status;
+            candidate.ProviderOrManufacturer ??= controller.AdapterCompatibility;
+        }
+
+        foreach (var driver in activeDrivers)
+        {
+            if (string.IsNullOrWhiteSpace(driver.NormalizedDeviceId))
+            {
+                continue;
+            }
+
+            var candidate = GetOrCreateCandidate(candidates, driver.NormalizedDeviceId!, pnpById);
+            candidate.FromSignedDriver = true;
+            candidate.InstanceId ??= driver.DeviceId;
+            candidate.DeviceName ??= driver.DeviceName;
+            candidate.FriendlyName ??= driver.FriendlyName;
+            candidate.ProviderOrManufacturer ??= driver.DriverProviderName ?? driver.Manufacturer;
+            candidate.ActiveInfName ??= driver.InfName;
+            candidate.Manufacturer ??= driver.Manufacturer;
+        }
+
+        var resolvedCandidates = candidates.Values
+            .Select(candidate => candidate.ToRecord())
+            .OrderByDescending(candidate => candidate.FromVideoController)
+            .ThenByDescending(candidate => candidate.FromSignedDriver)
+            .ThenByDescending(candidate => candidate.Present == true)
+            .ThenBy(candidate => candidate.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (resolvedCandidates.Length == 0)
+        {
+            return new AmdTargetDeviceResolution(
+                CorrelationStatus.None,
+                null,
+                [],
+                "No active AMD display device was identified from live device data.");
+        }
+
+        if (resolvedCandidates.Length == 1)
+        {
+            return new AmdTargetDeviceResolution(
+                CorrelationStatus.Confirmed,
+                resolvedCandidates[0],
+                resolvedCandidates,
+                "AMD display device correlation is confirmed.");
+        }
+
+        var strongestCandidates = resolvedCandidates
+            .Where(candidate => candidate.FromVideoController && candidate.FromSignedDriver)
+            .ToArray();
+
+        if (strongestCandidates.Length == 1)
+        {
+            return new AmdTargetDeviceResolution(
+                CorrelationStatus.Confirmed,
+                strongestCandidates[0],
+                resolvedCandidates,
+                "AMD display device correlation is confirmed from live controller and signed-driver data.");
+        }
+
+        return new AmdTargetDeviceResolution(
+            CorrelationStatus.Ambiguous,
+            null,
+            resolvedCandidates,
+            "AMD device data was found, but multiple possible AMD display targets remain.");
+    }
+
+    private static MutableAmdTargetCandidate GetOrCreateCandidate(
+        IDictionary<string, MutableAmdTargetCandidate> candidates,
+        string normalizedDeviceId,
+        IReadOnlyDictionary<string, DisplayDeviceInfo> pnpById)
+    {
+        if (candidates.TryGetValue(normalizedDeviceId, out var existing))
+        {
+            return existing;
+        }
+
+        pnpById.TryGetValue(normalizedDeviceId, out var pnpDevice);
+        var created = new MutableAmdTargetCandidate(normalizedDeviceId)
+        {
+            InstanceId = pnpDevice?.InstanceId,
+            FriendlyName = pnpDevice?.FriendlyName,
+            Present = pnpDevice?.Present,
+            Status = pnpDevice?.Status
         };
+
+        candidates[normalizedDeviceId] = created;
+        return created;
+    }
+
+    private static IReadOnlyList<VideoControllerInfo> GetAmdVideoControllers()
+    {
+        const string script = """
+            $controllers = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+              Where-Object {
+                $_.AdapterCompatibility -match 'AMD|Advanced Micro Devices' -or
+                $_.Name -match 'AMD|Radeon|RX'
+              } |
+              Select-Object Name, AdapterCompatibility, PNPDeviceID, Status
+            $controllers | ConvertTo-Json -Compress
+            """;
+
+        var output = Program.RunPowerShell(script);
+        var json = PowerShellJson.ExtractJson(output);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+            {
+                return JsonSerializer.Deserialize<List<VideoControllerInfo>>(json) ?? [];
+            }
+
+            var single = JsonSerializer.Deserialize<VideoControllerInfo>(json);
+            return single is null ? [] : [single];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private static IReadOnlyList<ActiveDisplayDriverInfo> GetAmdSignedDisplayDrivers()
@@ -1555,6 +1715,12 @@ internal static class DriverDiscovery
                 value.Contains("Advanced Micro Devices", StringComparison.OrdinalIgnoreCase));
     }
 
+    private static bool PackageMatchesInf(DriverPackageInfo package, string infName)
+    {
+        return string.Equals(package.PublishedName, infName, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(package.OriginalName, infName, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static (string? DriverDate, string? DriverVersion, DateTime DriverDateSortKey) ParseDriverVersionField(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1609,12 +1775,20 @@ internal static class DriverInventoryReportWriter
 
     public static string BuildListSummary(AmdDriverInventory inventory, string reportPath)
     {
-        var targetSummary = inventory.TargetDevice is null
-            ? "No AMD display device was found."
-            : $"Target device: {inventory.TargetDevice.FriendlyName ?? inventory.TargetDevice.InstanceId}.";
-        var activeSummary = inventory.ActiveDriver is null
-            ? "Active driver package could not be determined."
-            : $"Active INF: {inventory.ActiveDriver.InfName ?? "unknown"}.";
+        var targetSummary = inventory.TargetDeviceResolution.Status switch
+        {
+            CorrelationStatus.Confirmed => $"Target device: {inventory.TargetDevice!.DisplayName}.",
+            CorrelationStatus.Ambiguous => "AMD packages were found, but the active AMD display device could not be correlated confidently.",
+            _ => "No active AMD display device was identified."
+        };
+
+        var activeSummary = inventory.ActiveDriverStatus switch
+        {
+            CorrelationStatus.Confirmed => $"Active INF: {inventory.ActiveDriver!.InfName ?? "unknown"}.",
+            CorrelationStatus.Ambiguous => "The active AMD signed driver matched multiple live candidates.",
+            _ when inventory.Packages.Count > 0 => "Active AMD signed driver correlation failed.",
+            _ => "Active AMD signed driver could not be determined."
+        };
 
         return $"{targetSummary}{Environment.NewLine}{activeSummary}{Environment.NewLine}Found {inventory.Packages.Count} AMD driver package(s).{Environment.NewLine}Report: {reportPath}";
     }
@@ -1645,24 +1819,45 @@ internal static class DriverInventoryReportWriter
         builder.AppendLine("Target AMD Display Device");
         builder.AppendLine(new string('-', 80));
 
-        if (inventory.TargetDevice is null)
+        if (inventory.TargetDeviceResolution.Status == CorrelationStatus.None)
         {
-            builder.AppendLine("No AMD display device was found.");
+            builder.AppendLine("No active AMD display device was identified from live device data.");
         }
-        else
+        else if (inventory.TargetDeviceResolution.Status == CorrelationStatus.Ambiguous)
         {
-            builder.AppendLine($"Friendly Name: {inventory.TargetDevice.FriendlyName ?? "unknown"}");
+            builder.AppendLine("AMD device data was found, but the active AMD display device could not be correlated confidently.");
+
+            foreach (var candidate in inventory.TargetDeviceResolution.Candidates)
+            {
+                builder.AppendLine();
+                builder.AppendLine($"Possible Target: {candidate.DisplayName}");
+                builder.AppendLine($"  Instance ID: {candidate.InstanceId ?? "unknown"}");
+                builder.AppendLine($"  Friendly Name: {candidate.FriendlyName ?? "unknown"}");
+                builder.AppendLine($"  Present: {candidate.Present?.ToString() ?? "unknown"}");
+                builder.AppendLine($"  Status: {candidate.Status ?? "unknown"}");
+                builder.AppendLine($"  Source Confidence: {(candidate.FromVideoController && candidate.FromSignedDriver ? "VideoController + SignedDriver" : candidate.FromVideoController ? "VideoController" : "SignedDriver")}");
+            }
+        }
+        else if (inventory.TargetDevice is not null)
+        {
+            builder.AppendLine($"Display Name: {inventory.TargetDevice.DisplayName}");
             builder.AppendLine($"Instance ID: {inventory.TargetDevice.InstanceId}");
-            builder.AppendLine($"Present: {inventory.TargetDevice.Present}");
+            builder.AppendLine($"Friendly Name: {inventory.TargetDevice.FriendlyName ?? "unknown"}");
+            builder.AppendLine($"Present: {inventory.TargetDevice.Present?.ToString() ?? "unknown"}");
+            builder.AppendLine($"Status: {inventory.TargetDevice.Status ?? "unknown"}");
+            builder.AppendLine($"Provider / Manufacturer: {inventory.TargetDevice.ProviderOrManufacturer ?? "unknown"}");
         }
 
         builder.AppendLine();
         builder.AppendLine("Active Signed Driver");
         builder.AppendLine(new string('-', 80));
 
-        if (inventory.ActiveDriver is null)
+        if (inventory.ActiveDriverStatus == CorrelationStatus.None || inventory.ActiveDriver is null)
         {
-            builder.AppendLine("Active AMD signed driver could not be determined.");
+            builder.AppendLine(
+                inventory.Packages.Count > 0
+                    ? "AMD packages were found, but the active AMD signed driver could not be correlated to a confirmed live AMD target."
+                    : "Active AMD signed driver could not be determined.");
         }
         else
         {
@@ -1883,7 +2078,26 @@ internal static class PowerShellJson
     }
 }
 
-internal sealed record DisplayDeviceInfo(string? FriendlyName, string InstanceId, bool Present);
+internal sealed record DisplayDeviceInfo(string? FriendlyName, string InstanceId, bool Present, string? Status)
+{
+    public string NormalizedInstanceId => DeviceIdNormalization.Normalize(InstanceId) ?? string.Empty;
+}
+
+internal sealed record VideoControllerInfo(string? Name, string? AdapterCompatibility, string? PnpDeviceId, string? Status)
+{
+    public string? NormalizedDeviceId => DeviceIdNormalization.Normalize(PnpDeviceId);
+}
+
+internal static class DeviceIdNormalization
+{
+    public static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim().ToUpperInvariant();
+    }
+}
+
 internal sealed record ServiceInfo(string ServiceName, string DisplayName);
 internal sealed record UtilityExecutionResult(bool Success, string Summary);
 internal sealed record ActiveDisplayDriverInfo(
@@ -1894,7 +2108,38 @@ internal sealed record ActiveDisplayDriverInfo(
     string? InfName,
     string? DriverVersion,
     string? DriverDate,
-    string? FriendlyName);
+    string? FriendlyName)
+{
+    public string? NormalizedDeviceId => DeviceIdNormalization.Normalize(DeviceId);
+}
+
+internal sealed record AmdTargetDeviceInfo(
+    string InstanceId,
+    string NormalizedDeviceId,
+    string DisplayName,
+    string? FriendlyName,
+    string? DeviceName,
+    string? ProviderOrManufacturer,
+    string? Manufacturer,
+    string? ActiveInfName,
+    bool? Present,
+    string? Status,
+    bool FromVideoController,
+    bool FromSignedDriver);
+
+internal sealed record AmdTargetDeviceResolution(
+    CorrelationStatus Status,
+    AmdTargetDeviceInfo? Device,
+    IReadOnlyList<AmdTargetDeviceInfo> Candidates,
+    string Message);
+
+internal enum CorrelationStatus
+{
+    None,
+    Confirmed,
+    Ambiguous
+}
+
 internal sealed record DriverPackageInfo(
     string PublishedName,
     string? OriginalName,
@@ -1916,12 +2161,77 @@ internal sealed record DriverPackageInfo(
 }
 internal sealed record AmdDriverInventory(
     IReadOnlyList<DisplayDeviceInfo> Devices,
-    DisplayDeviceInfo? TargetDevice,
+    AmdTargetDeviceResolution TargetDeviceResolution,
+    AmdTargetDeviceInfo? TargetDevice,
     IReadOnlyList<ActiveDisplayDriverInfo> ActiveDrivers,
+    CorrelationStatus ActiveDriverStatus,
     ActiveDisplayDriverInfo? ActiveDriver,
     IReadOnlyList<DriverPackageInfo> Packages,
     bool HasConfirmedActivePackage,
     bool ActivePackageCorrelationAmbiguous);
+
+internal sealed class MutableAmdTargetCandidate
+{
+    public MutableAmdTargetCandidate(string normalizedDeviceId)
+    {
+        NormalizedDeviceId = normalizedDeviceId;
+    }
+
+    public string NormalizedDeviceId { get; }
+    public string? InstanceId { get; set; }
+    public string? FriendlyName { get; set; }
+    public string? DeviceName { get; set; }
+    public string? ProviderOrManufacturer { get; set; }
+    public string? Manufacturer { get; set; }
+    public string? ActiveInfName { get; set; }
+    public bool? Present { get; set; }
+    public string? Status { get; set; }
+    public bool FromVideoController { get; set; }
+    public bool FromSignedDriver { get; set; }
+
+    public AmdTargetDeviceInfo ToRecord()
+    {
+        var instanceId = InstanceId ?? NormalizedDeviceId;
+        var displayName = FriendlyName ?? DeviceName ?? instanceId;
+        return new AmdTargetDeviceInfo(
+            instanceId,
+            NormalizedDeviceId,
+            displayName,
+            FriendlyName,
+            DeviceName,
+            ProviderOrManufacturer,
+            Manufacturer,
+            ActiveInfName,
+            Present,
+            Status,
+            FromVideoController,
+            FromSignedDriver);
+    }
+}
+
+internal static class EnumerableExtensions
+{
+    public static string[] AsSingleItemArray(this string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? [] : [value];
+    }
+
+    public static IEnumerable<TSource> DistinctBy<TSource, TKey>(
+        this IEnumerable<TSource> source,
+        Func<TSource, TKey> keySelector,
+        IEqualityComparer<TKey> comparer)
+        where TKey : notnull
+    {
+        var seen = new HashSet<TKey>(comparer);
+        foreach (var item in source)
+        {
+            if (seen.Add(keySelector(item)))
+            {
+                yield return item;
+            }
+        }
+    }
+}
 
 internal sealed class MonitorStatus
 {
