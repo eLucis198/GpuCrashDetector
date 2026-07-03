@@ -31,9 +31,24 @@ Tray menu actions:
 - open latest report
 - capture a snapshot manually
 - enable or disable run on login
+- open the `Utilities` submenu for manual recovery actions
 - exit the app
 
 The tray menu can enable startup on login by itself. It writes a per-user Windows Run entry, so no separate installer is required for normal use.
+
+## Utilities
+
+The tray app includes a manual `Utilities` submenu. These actions do not run automatically.
+
+- `Restart AMD Services`
+  - discovers installed AMD-related Windows services and restarts them one by one
+  - requests elevation only when you click it
+- `Clean Local Reports And Logs`
+  - deletes only this app's generated `monitor.log`, `gpu-diagnostic-report-*.txt`, and `dxdiag-*.txt` files
+  - leaves unrelated files in the reports folder alone
+- `Recover AMD Display Device`
+  - discovers an AMD display adapter, enables it, restarts it, and scans for hardware changes
+  - requests elevation only when you click it
 
 ## Run From Source
 

@@ -4,6 +4,7 @@ using System.Drawing;
 using Microsoft.Win32;
 using System.Runtime.Versioning;
 using System.Text;
+using System.Text.Json;
 using System.Windows.Forms;
 
 namespace GpuCrashDetector;
@@ -254,6 +255,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _lastSnapshotItem;
     private readonly ToolStripMenuItem _logsPathItem;
     private readonly ToolStripMenuItem _startupItem;
+    private readonly SynchronizationContext _uiContext;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly GpuMonitor _monitor;
     private readonly Task _monitorTask;
@@ -262,12 +264,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _options = options;
         _monitor = new GpuMonitor(_options, _status);
+        _uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
         _stateItem = new ToolStripMenuItem();
         _lastTriggerItem = new ToolStripMenuItem();
         _lastSnapshotItem = new ToolStripMenuItem();
         _logsPathItem = new ToolStripMenuItem();
         _startupItem = new ToolStripMenuItem();
+        var utilitiesMenu = new ToolStripMenuItem("Utilities");
+        utilitiesMenu.DropDownItems.Add("Restart AMD Services", null, (_, _) => RestartAmdServices());
+        utilitiesMenu.DropDownItems.Add("Clean Local Reports And Logs", null, (_, _) => CleanLocalReportsAndLogs());
+        utilitiesMenu.DropDownItems.Add("Recover AMD Display Device", null, (_, _) => RecoverAmdDisplayDevice());
 
         _menu = new ContextMenuStrip();
         _menu.Opening += (_, _) => RefreshMenu();
@@ -282,6 +289,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             new ToolStripMenuItem("Open Latest Report", null, (_, _) => OpenLatestReport()),
             new ToolStripMenuItem("Capture Snapshot Now", null, (_, _) => TriggerManualSnapshot()),
             _startupItem,
+            utilitiesMenu,
             new ToolStripSeparator(),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication())
         ]);
@@ -389,6 +397,119 @@ internal sealed class TrayApplicationContext : ApplicationContext
         });
     }
 
+    private void RestartAmdServices()
+    {
+        if (!ConfirmAction("Restart AMD Services", "Restart AMD-related Windows services now?"))
+        {
+            return;
+        }
+
+        Task.Run(() =>
+        {
+            try
+            {
+                var services = ServiceDiscovery.GetAmdServices()
+                    .OrderBy(service => service.DisplayName, StringComparer.OrdinalIgnoreCase)
+                    .Select(service => service.ServiceName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                if (services.Length == 0)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Restart AMD Services: no matching services found.");
+                    ShowResult("Restart AMD Services", "No AMD-related Windows services were found.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var script = UtilityScriptBuilder.BuildRestartServicesScript(services);
+                var result = ElevatedCommandRunner.Run("Restart AMD Services", script, _options.OutputDirectory);
+
+                AppLog.Append(_options.OutputDirectory, $"Restart AMD Services: {result.Summary}");
+                ShowResult("Restart AMD Services", result.Summary, result.Success ? ToolTipIcon.Info : ToolTipIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                _status.RecordError(ex);
+                AppLog.Append(_options.OutputDirectory, $"Restart AMD Services failed unexpectedly: {ex}");
+                ShowResult("Restart AMD Services", "The utility failed before the command could run.", ToolTipIcon.Error);
+            }
+        });
+    }
+
+    private void CleanLocalReportsAndLogs()
+    {
+        if (!ConfirmAction("Clean Local Reports And Logs", "Delete generated monitor logs and reports from this app's output folder?"))
+        {
+            return;
+        }
+
+        Task.Run(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(_options.OutputDirectory);
+                var deletedFiles = new List<string>();
+                deletedFiles.AddRange(DeleteIfExists(Path.Combine(_options.OutputDirectory, "monitor.log")));
+                deletedFiles.AddRange(DeleteByPattern("gpu-diagnostic-report-*.txt"));
+                deletedFiles.AddRange(DeleteByPattern("dxdiag-*.txt"));
+
+                var summary = deletedFiles.Count == 0
+                    ? "No generated log or report files were found."
+                    : $"Deleted {deletedFiles.Count} generated file(s) from '{_options.OutputDirectory}'.";
+
+                AppLog.Append(_options.OutputDirectory, $"Clean Local Reports And Logs: {summary}");
+                ShowResult("Clean Local Reports And Logs", summary, ToolTipIcon.Info);
+            }
+            catch (Exception ex)
+            {
+                _status.RecordError(ex);
+                AppLog.Append(_options.OutputDirectory, $"Clean Local Reports And Logs failed unexpectedly: {ex}");
+                ShowResult("Clean Local Reports And Logs", "The cleanup failed unexpectedly.", ToolTipIcon.Error);
+            }
+        });
+    }
+
+    private void RecoverAmdDisplayDevice()
+    {
+        if (!ConfirmAction("Recover AMD Display Device", "Enable and restart the detected AMD display device now?"))
+        {
+            return;
+        }
+
+        Task.Run(() =>
+        {
+            try
+            {
+                var devices = DeviceDiscovery.GetAmdDisplayDevices();
+                var targetDevice = devices.Count switch
+                {
+                    0 => null,
+                    1 => devices[0],
+                    _ => devices.FirstOrDefault(device => device.Present) ?? devices[0]
+                };
+
+                if (targetDevice is null)
+                {
+                    AppLog.Append(_options.OutputDirectory, "Recover AMD Display Device: no AMD display device found.");
+                    ShowResult("Recover AMD Display Device", "No AMD display device was found.", ToolTipIcon.Info);
+                    return;
+                }
+
+                var script = UtilityScriptBuilder.BuildRecoverDisplayDeviceScript(targetDevice.InstanceId);
+                var result = ElevatedCommandRunner.Run("Recover AMD Display Device", script, _options.OutputDirectory);
+
+                AppLog.Append(_options.OutputDirectory, $"Recover AMD Display Device: {result.Summary}");
+                ShowResult("Recover AMD Display Device", result.Summary, result.Success ? ToolTipIcon.Info : ToolTipIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                _status.RecordError(ex);
+                AppLog.Append(_options.OutputDirectory, $"Recover AMD Display Device failed unexpectedly: {ex}");
+                ShowResult("Recover AMD Display Device", "The utility failed before the command could run.", ToolTipIcon.Error);
+            }
+        });
+    }
+
     private void ToggleStartupRegistration(object? sender, EventArgs e)
     {
         try
@@ -445,6 +566,64 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _notifyIcon.BalloonTipText = message;
         _notifyIcon.BalloonTipIcon = icon;
         _notifyIcon.ShowBalloonTip(3000);
+    }
+
+    private bool ConfirmAction(string title, string message)
+    {
+        return MessageBox.Show(
+            message,
+            title,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    }
+
+    private IEnumerable<string> DeleteIfExists(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        File.Delete(path);
+        return [path];
+    }
+
+    private IEnumerable<string> DeleteByPattern(string pattern)
+    {
+        return Directory.Exists(_options.OutputDirectory)
+            ? Directory.GetFiles(_options.OutputDirectory, pattern)
+                .Select(path =>
+                {
+                    File.Delete(path);
+                    return path;
+                })
+                .ToArray()
+            : [];
+    }
+
+    private void ShowResult(string title, string message, ToolTipIcon icon)
+    {
+        PostToUi(() =>
+        {
+            ShowBalloon(message, icon);
+            MessageBox.Show(message, title, MessageBoxButtons.OK, ToMessageBoxIcon(icon));
+        });
+    }
+
+    private void PostToUi(Action action)
+    {
+        _uiContext.Post(_ => action(), null);
+    }
+
+    private static MessageBoxIcon ToMessageBoxIcon(ToolTipIcon icon)
+    {
+        return icon switch
+        {
+            ToolTipIcon.Error => MessageBoxIcon.Error,
+            ToolTipIcon.Warning => MessageBoxIcon.Warning,
+            _ => MessageBoxIcon.Information
+        };
     }
 
     private static string BuildTrayText(MonitorStatusSnapshot snapshot)
@@ -618,6 +797,19 @@ internal sealed class AppOptions
     }
 }
 
+internal static class AppLog
+{
+    public static void Append(string outputDirectory, string message)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        var monitorLogPath = Path.Combine(outputDirectory, "monitor.log");
+        File.AppendAllText(
+            monitorLogPath,
+            $"[{DateTimeOffset.Now:O}] {message}{Environment.NewLine}",
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+    }
+}
+
 internal static class StartupRegistration
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -661,6 +853,281 @@ internal static class StartupRegistration
         return $"\"{value}\"";
     }
 }
+
+internal static class ElevatedCommandRunner
+{
+    public static UtilityExecutionResult Run(string actionName, string scriptContent, string outputDirectory)
+    {
+        Directory.CreateDirectory(outputDirectory);
+
+        var baseName = $"{SanitizeFileName(actionName)}-{Guid.NewGuid():N}";
+        var scriptPath = Path.Combine(outputDirectory, $"{baseName}.payload.ps1");
+        var wrapperPath = Path.Combine(outputDirectory, $"{baseName}.runner.ps1");
+        var resultPath = Path.Combine(outputDirectory, $"{baseName}.result.txt");
+
+        try
+        {
+            File.WriteAllText(scriptPath, scriptContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllText(wrapperPath, BuildWrapperScript(scriptPath, resultPath), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powershell",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{wrapperPath}\"",
+                UseShellExecute = true,
+                Verb = "runas",
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                return new UtilityExecutionResult(false, "Failed to start the elevated process.");
+            }
+
+            process.WaitForExit();
+
+            var output = File.Exists(resultPath)
+                ? File.ReadAllText(resultPath)
+                : $"No output file was produced. Exit code: {process.ExitCode}.";
+
+            var (cleanedOutput, exitCode) = ParseUtilityOutput(output, process.ExitCode);
+            var success = exitCode == 0;
+            var summary = success
+                ? cleanedOutput
+                : $"The elevated command failed with exit code {exitCode}.{Environment.NewLine}{cleanedOutput}";
+
+            return new UtilityExecutionResult(success, summary);
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            return new UtilityExecutionResult(false, "The elevation prompt was cancelled.");
+        }
+        finally
+        {
+            TryDelete(scriptPath);
+            TryDelete(wrapperPath);
+            TryDelete(resultPath);
+        }
+    }
+
+    private static string BuildWrapperScript(string scriptPath, string resultPath)
+    {
+        var escapedScriptPath = scriptPath.Replace("'", "''", StringComparison.Ordinal);
+        var escapedResultPath = resultPath.Replace("'", "''", StringComparison.Ordinal);
+        return $$"""
+            $ErrorActionPreference = 'Stop'
+            $scriptPath = '{{escapedScriptPath}}'
+            $resultPath = '{{escapedResultPath}}'
+            $capturedExitCode = 0
+            try {
+              & $scriptPath *>&1 | Out-File -FilePath $resultPath -Encoding utf8
+              if ($LASTEXITCODE) {
+                $capturedExitCode = $LASTEXITCODE
+              }
+            }
+            catch {
+              $_ | Out-File -FilePath $resultPath -Encoding utf8
+              $capturedExitCode = 1
+            }
+            Add-Content -Path $resultPath -Value "__EXITCODE__=$capturedExitCode" -Encoding utf8
+            exit $capturedExitCode
+            """;
+    }
+
+    private static (string Output, int ExitCode) ParseUtilityOutput(string output, int fallbackExitCode)
+    {
+        var lines = output
+            .Split([Environment.NewLine], StringSplitOptions.None)
+            .ToList();
+
+        var exitCode = fallbackExitCode;
+        for (var i = lines.Count - 1; i >= 0; i--)
+        {
+            const string exitCodePrefix = "__EXITCODE__=";
+            if (!lines[i].StartsWith(exitCodePrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (int.TryParse(lines[i][exitCodePrefix.Length..], out var parsedExitCode))
+            {
+                exitCode = parsedExitCode;
+            }
+
+            lines.RemoveAt(i);
+            break;
+        }
+
+        var cleanedOutput = string.Join(Environment.NewLine, lines).Trim();
+        return (
+            string.IsNullOrWhiteSpace(cleanedOutput)
+                ? "The command completed without additional output."
+                : cleanedOutput,
+            exitCode);
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        return new string(value.Select(ch => invalidChars.Contains(ch) ? '-' : ch).ToArray());
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
+}
+
+internal static class UtilityScriptBuilder
+{
+    public static string BuildRestartServicesScript(IReadOnlyCollection<string> serviceNames)
+    {
+        var quotedNames = string.Join(", ", serviceNames.Select(name => $"'{name.Replace("'", "''", StringComparison.Ordinal)}'"));
+        return $$"""
+            $ErrorActionPreference = 'Stop'
+            $serviceNames = @({{quotedNames}})
+            $results = @()
+            foreach ($serviceName in $serviceNames) {
+              try {
+                $service = Get-Service -Name $serviceName -ErrorAction Stop
+                if ($service.Status -eq 'Running') {
+                  Stop-Service -Name $serviceName -Force -ErrorAction Stop
+                  $service.Refresh()
+                  $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(20))
+                }
+                Start-Service -Name $serviceName -ErrorAction Stop
+                $service.Refresh()
+                $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(20))
+                $results += "SUCCESS: $serviceName restarted."
+              }
+              catch {
+                $results += "FAILED: $serviceName - $($_.Exception.Message)"
+              }
+            }
+            $results -join [Environment]::NewLine
+            """;
+    }
+
+    public static string BuildRecoverDisplayDeviceScript(string instanceId)
+    {
+        var escapedInstanceId = instanceId.Replace("'", "''", StringComparison.Ordinal);
+        return $$"""
+            $ErrorActionPreference = 'Stop'
+            $instanceId = '{{escapedInstanceId}}'
+            Enable-PnpDevice -InstanceId $instanceId -Confirm:$false -ErrorAction Stop | Out-Null
+            Start-Sleep -Seconds 3
+            pnputil /restart-device "$instanceId"
+            $restartExitCode = $LASTEXITCODE
+            pnputil /scan-devices
+            $scanExitCode = $LASTEXITCODE
+            if ($restartExitCode -ne 0 -or $scanExitCode -ne 0) {
+              throw "pnputil failed. restart-device=$restartExitCode scan-devices=$scanExitCode"
+            }
+            "Recovered display device: $instanceId"
+            """;
+    }
+}
+
+internal static class DeviceDiscovery
+{
+    public static IReadOnlyList<DisplayDeviceInfo> GetAmdDisplayDevices()
+    {
+        const string script = """
+            $devices = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue |
+              Where-Object {
+                $_.FriendlyName -match 'AMD|Radeon|RX'
+              } |
+              Select-Object FriendlyName, InstanceId, Present
+            $devices | ConvertTo-Json -Compress
+            """;
+
+        var output = Program.RunPowerShell(script);
+        var json = ExtractJson(output);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+        {
+            return JsonSerializer.Deserialize<List<DisplayDeviceInfo>>(json) ?? [];
+        }
+
+        var single = JsonSerializer.Deserialize<DisplayDeviceInfo>(json);
+        return single is null ? [] : [single];
+    }
+
+    private static string ExtractJson(string output)
+    {
+        var lines = output
+            .Split([Environment.NewLine], StringSplitOptions.None)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Where(line => !line.StartsWith("Command:", StringComparison.Ordinal))
+            .Where(line => !line.StartsWith("ExitCode:", StringComparison.Ordinal))
+            .Where(line => !string.Equals(line, "stderr:", StringComparison.Ordinal))
+            .ToArray();
+
+        return string.Join(Environment.NewLine, lines);
+    }
+}
+
+internal static class ServiceDiscovery
+{
+    public static IReadOnlyList<ServiceInfo> GetAmdServices()
+    {
+        const string script = """
+            $services = Get-Service -ErrorAction SilentlyContinue |
+              Where-Object {
+                $_.Name -like 'AMD*' -or $_.DisplayName -like 'AMD*'
+              } |
+              Sort-Object DisplayName |
+              Select-Object @{ Name = 'ServiceName'; Expression = { $_.Name } }, DisplayName
+            $services | ConvertTo-Json -Compress
+            """;
+
+        var output = Program.RunPowerShell(script);
+        var json = ExtractJson(output);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+        {
+            return JsonSerializer.Deserialize<List<ServiceInfo>>(json) ?? [];
+        }
+
+        var single = JsonSerializer.Deserialize<ServiceInfo>(json);
+        return single is null ? [] : [single];
+    }
+
+    private static string ExtractJson(string output)
+    {
+        var lines = output
+            .Split([Environment.NewLine], StringSplitOptions.None)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Where(line => !line.StartsWith("Command:", StringComparison.Ordinal))
+            .Where(line => !line.StartsWith("ExitCode:", StringComparison.Ordinal))
+            .Where(line => !string.Equals(line, "stderr:", StringComparison.Ordinal))
+            .ToArray();
+
+        return string.Join(Environment.NewLine, lines);
+    }
+}
+
+internal sealed record DisplayDeviceInfo(string? FriendlyName, string InstanceId, bool Present);
+internal sealed record ServiceInfo(string ServiceName, string DisplayName);
+internal sealed record UtilityExecutionResult(bool Success, string Summary);
 
 internal sealed class MonitorStatus
 {
