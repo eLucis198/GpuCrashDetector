@@ -1,0 +1,26 @@
+GPU diagnostic collection completed.
+Report: C:\Users\cfp\Documents\detector\GpuCrashDetector\reports-realtime-test\gpu-diagnostic-report-20260703-164230.txt
+DxDiag: C:\Users\cfp\Documents\detector\GpuCrashDetector\reports-realtime-test\dxdiag-20260703-164226.txt
+
+Collected sections:
+- Run Context
+- System Overview
+- GPU Adapters
+- Display Drivers
+- Plug and Play Display Devices
+- Recent GPU-Related System Events
+- Recent GPU-Related Application Events
+- Recent WHEA Events
+- Crash Artifacts
+- Display Registry TDR Keys
+- DirectX Diagnostic
+
+Open the saved report and search for these terms first:
+- 4101
+- LiveKernelEvent
+- WHEA
+- nvlddmkm
+- amdkmdag
+- dxgkrnl
+[2026-07-03T16:42:32.8991783-03:00] trigger matched crash artifacts: + FullyQualifiedErrorId : EmptyPipeElement
+[2026-07-03T16:42:32.8994957-03:00] snapshot skipped due to debounce: new crash artifact detected (+ FullyQualifiedErrorId : EmptyPipeElement)

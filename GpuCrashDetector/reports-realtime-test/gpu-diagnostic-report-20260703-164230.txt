@@ -1,0 +1,2447 @@
+GPU Crash Diagnostic Report
+================================================================================
+
+Run Context
+--------------------------------------------------------------------------------
+Timestamp: 2026-07-03T16:42:21.3205035-03:00
+Machine: COMPUTER
+User: COMPUTER\CodexSandboxOffline
+OS Architecture: Microsoft Windows NT 10.0.26200.0
+Process Architecture: X64
+Lookback Days: 1
+Poll Interval Seconds: 5
+Trigger Reason: startup baseline
+Output Directory: C:\Users\cfp\Documents\detector\GpuCrashDetector\reports-realtime-test
+
+System Overview
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "$os = Get-CimInstance Win32_OperatingSystem
+$cs = Get-CimInstance Win32_ComputerSystem
+[pscustomobject]@{
+  ComputerName = $env:COMPUTERNAME
+  Manufacturer = $cs.Manufacturer
+  Model = $cs.Model
+  TotalMemoryGB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
+  OS = $os.Caption
+  Version = $os.Version
+  Build = $os.BuildNumber
+  LastBootUpTime = $os.LastBootUpTime
+} | Format-List"
+ExitCode: 0
+
+
+
+ComputerName   : COMPUTER
+Manufacturer   : 
+Model          : 
+TotalMemoryGB  : 0
+OS             : 
+Version        : 
+Build          : 
+LastBootUpTime :
+
+stderr:
+Get-CimInstance : Acesso negado 
+No linha:1 caractere:7
++ $os = Get-CimInstance Win32_OperatingSystem
++       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (root\cimv2:Win32_OperatingSystem:String) [Get-CimInstance], CimExcept 
+   ion
+    + FullyQualifiedErrorId : HRESULT 0x80041003,Microsoft.Management.Infrastructure.CimCmdlets.GetCimInstanceCommand
+ 
+Get-CimInstance : Acesso negado 
+No linha:2 caractere:7
++ $cs = Get-CimInstance Win32_ComputerSystem
++       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (root\cimv2:Win32_ComputerSystem:String) [Get-CimInstance], CimExcepti 
+   on
+    + FullyQualifiedErrorId : HRESULT 0x80041003,Microsoft.Management.Infrastructure.CimCmdlets.GetCimInstanceCommand
+
+GPU Adapters
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_VideoController |
+  Select-Object Name, AdapterCompatibility, DriverVersion, DriverDate, VideoProcessor, AdapterRAM, VideoModeDescription, Status, PNPDeviceID |
+  Format-List"
+ExitCode: 1
+
+stderr:
+Get-CimInstance : Acesso negado 
+No linha:1 caractere:1
++ Get-CimInstance Win32_VideoController |
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (root\cimv2:Win32_VideoController:String) [Get-CimInstance], CimExcept 
+   ion
+    + FullyQualifiedErrorId : HRESULT 0x80041003,Microsoft.Management.Infrastructure.CimCmdlets.GetCimInstanceCommand
+
+Display Drivers
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_PnPSignedDriver |
+  Where-Object { $_.DeviceClass -eq 'DISPLAY' } |
+  Select-Object DeviceName, Manufacturer, DriverVersion, DriverDate, DriverProviderName, InfName, IsSigned |
+  Sort-Object DeviceName |
+  Format-List"
+ExitCode: 1
+
+stderr:
+Get-CimInstance : Acesso negado 
+No linha:1 caractere:1
++ Get-CimInstance Win32_PnPSignedDriver |
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (root\cimv2:Win32_PnPSignedDriver:String) [Get-CimInstance], CimExcept 
+   ion
+    + FullyQualifiedErrorId : HRESULT 0x80041003,Microsoft.Management.Infrastructure.CimCmdlets.GetCimInstanceCommand
+
+Plug and Play Display Devices
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-PnpDevice -Class Display -ErrorAction SilentlyContinue |
+  Select-Object Status, Class, FriendlyName, InstanceId, Problem, Present |
+  Format-List"
+ExitCode: 1
+
+Recent GPU-Related System Events
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "
+$start = (Get-Date).AddDays(-1)
+$providers = @(
+  'Display',
+  'nvlddmkm',
+  'amdkmdag',
+  'amdkmdap',
+  'IntelGFX',
+  'igfx',
+  'Application Error',
+  'Windows Error Reporting',
+  'Microsoft-Windows-DxgKrnl',
+  'Microsoft-Windows-Dwm-Core',
+  'Microsoft-Windows-WHEA-Logger'
+)
+$keywords = 'display driver|stopped responding|recovered|TDR|timeout detection|LiveKernelEvent|graphics|GPU'
+Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = $start } -ErrorAction SilentlyContinue |
+  Where-Object {
+    $providers -contains $_.ProviderName -or
+    $_.Id -in 4101, 14, 117, 141, 142, 1, 1000, 1001 -or
+    ($_.Message -and $_.Message -match $keywords)
+  } |
+  Select-Object -First 80 TimeCreated, Id, LevelDisplayName, ProviderName, MachineName, Message |
+  Format-List
+"
+ExitCode: 0
+
+
+
+TimeCreated      : 03/07/2026 16:41:29
+Id               : 26
+LevelDisplayName : Informa��es
+ProviderName     : Application Popup
+MachineName      : computer
+Message          : Pop-up de aplicativo: GpuCrashDetector.exe - Erro de Aplicativo : A exce��o exce��o de software 
+                   desconhecida (0xe0434352) ocorreu no aplicativo no local 0x00007FF926991B6A.
+                   
+
+TimeCreated      : 03/07/2026 16:25:40
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Configuration-Change-Monitor
+MachineName      : computer
+Message          : 
+
+TimeCreated      : 03/07/2026 16:25:26
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-IsolatedUserMode
+MachineName      : computer
+Message          : Secure Trustlet \??\C:\WINDOWS\System32\NgcIso.exe Id 6 and Pid 6704 started with status 
+                   STATUS_SUCCESS.
+
+TimeCreated      : 03/07/2026 16:25:25
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-FilterManager
+MachineName      : computer
+Message          : Filtro do Sistema de Arquivos 'CldFlt' (Vers�o 10.0, ?2016?-?01?-?03T21:58:39.000000000Z) 
+                   descarregado com sucesso.
+
+TimeCreated      : 03/07/2026 16:25:25
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-IsolatedUserMode
+MachineName      : computer
+Message          : Secure Trustlet \??\C:\WINDOWS\system32\lsaiso.exe Id 1 and Pid 1880 started with status 
+                   STATUS_SUCCESS.
+
+TimeCreated      : 03/07/2026 16:25:25
+Id               : 14
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Wininit
+MachineName      : computer
+Message          : Credential Guard configuration:
+                   
+                   Registry Configuration: 0x0
+                   Test Configuration: 0
+                   Auto Enablement: 0
+
+TimeCreated      : 03/07/2026 16:25:14
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Hyper-V-Hypervisor
+MachineName      : computer
+Message          : Hipervisor iniciado com �xito.
+
+TimeCreated      : 03/07/2026 09:32:12
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Configuration-Change-Monitor
+MachineName      : computer
+Message          : 
+
+TimeCreated      : 03/07/2026 09:31:43
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-IsolatedUserMode
+MachineName      : computer
+Message          : Secure Trustlet \??\C:\WINDOWS\System32\NgcIso.exe Id 6 and Pid 8140 started with status 
+                   STATUS_SUCCESS.
+
+TimeCreated      : 03/07/2026 09:31:41
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-FilterManager
+MachineName      : computer
+Message          : Filtro do Sistema de Arquivos 'CldFlt' (Vers�o 10.0, ?2016?-?01?-?03T21:58:39.000000000Z) 
+                   descarregado com sucesso.
+
+TimeCreated      : 03/07/2026 09:31:41
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-IsolatedUserMode
+MachineName      : computer
+Message          : Secure Trustlet \??\C:\WINDOWS\system32\lsaiso.exe Id 1 and Pid 2032 started with status 
+                   STATUS_SUCCESS.
+
+TimeCreated      : 03/07/2026 09:31:41
+Id               : 14
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Wininit
+MachineName      : computer
+Message          : Credential Guard configuration:
+                   
+                   Registry Configuration: 0x0
+                   Test Configuration: 0
+                   Auto Enablement: 0
+
+TimeCreated      : 03/07/2026 09:31:27
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Hyper-V-Hypervisor
+MachineName      : computer
+Message          : Hipervisor iniciado com �xito.
+
+TimeCreated      : 02/07/2026 23:42:07
+Id               : 117
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-HttpService
+MachineName      : computer
+Message          : Excluir o grupo de URLs 0xFE00000320000001. Status 0x0. ID do processo 0x5794 caminho execut�vel 
+                   \Device\HarddiskVolume3\Program Files\Microsoft Visual 
+                   Studio\18\Professional\Common7\IDE\devenv.exe, Usu�rio 
+                   S-1-5-21-2182320829-1555586760-2258832400-1004
+
+TimeCreated      : 02/07/2026 23:42:05
+Id               : 117
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-HttpService
+MachineName      : computer
+Message          : Excluir o grupo de URLs 0xFE00000620000001. Status 0x0. ID do processo 0x5794 caminho execut�vel 
+                   \Device\HarddiskVolume3\Program Files\Microsoft Visual 
+                   Studio\18\Professional\Common7\IDE\devenv.exe, Usu�rio 
+                   S-1-5-21-2182320829-1555586760-2258832400-1004
+
+TimeCreated      : 02/07/2026 23:01:13
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Power-Troubleshooter
+MachineName      : computer
+Message          : O sistema continuou ap�s retornar do modo de suspens�o.
+                   
+                   Hora da Suspens�o: ?2026?-?07?-?03T00:29:30.891660800Z
+                   Hora da Ativa��o: ?2026?-?07?-?03T02:01:12.397244000Z
+                   
+                   Ativar Origem: Device -AMD USB 3.20 eXtensible Host Controller - 1.10 (Microsoft)
+
+TimeCreated      : 02/07/2026 23:01:10
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : Microsoft-Windows-Kernel-General
+MachineName      : computer
+Message          : A hora do sistema foi alterada para ?2026?-?07?-?03T02:01:10.500000000Z de delta de tempo 
+                   ?2026?-?07?-?03T00:29:35.244651100Z.
+                   : 5495255 ms
+                   
+                   Motivo da Altera��o: System time synchronized with the hardware clock.
+                   Processo: '' (PID 4).
+                   
+                   hora de RTC: ?2026?-?07?-?02T23:01:10.500000000Z
+                   Diferen�a de fuso hor�rio atual: 180
+                   A hora do RTC est� em UTC: false
+                   A hora do sistema foi baseada na hora RTC: false
+
+Recent GPU-Related Application Events
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "
+$start = (Get-Date).AddDays(-1)
+$providers = @(
+  'Display',
+  'nvlddmkm',
+  'amdkmdag',
+  'amdkmdap',
+  'IntelGFX',
+  'igfx',
+  'Application Error',
+  'Windows Error Reporting',
+  'Microsoft-Windows-DxgKrnl',
+  'Microsoft-Windows-Dwm-Core',
+  'Microsoft-Windows-WHEA-Logger'
+)
+$keywords = 'display driver|stopped responding|recovered|TDR|timeout detection|LiveKernelEvent|graphics|GPU'
+Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $start } -ErrorAction SilentlyContinue |
+  Where-Object {
+    $providers -contains $_.ProviderName -or
+    $_.Id -in 4101, 14, 117, 141, 142, 1, 1000, 1001 -or
+    ($_.Message -and $_.Message -match $keywords)
+  } |
+  Select-Object -First 50 TimeCreated, Id, LevelDisplayName, ProviderName, MachineName, Message |
+  Format-List
+"
+ExitCode: 0
+
+
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffd181794f4060
+                   P3: fffff801bdeeaf80
+                   P4: 0
+                   P5: ffffd181794f1080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260703-1621.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-24575578-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.87a08a54-3e08-470a-a322-b36de559ffa9.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.07fe49c3-cf5a-4638-8b75-81e2d88c5538.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a3608434-c034-496d-851b-189e52f3a0a8.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.21f28563-5e2e-4392-b6da-0a071781a529.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_80c629cc2391412ac8c6b274d039bf46838c
+                   cfed_00000000_b56a8661-1b3d-40b9-8878-8da40b2a11b1
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: b56a8661-1b3d-40b9-8878-8da40b2a11b1
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260703-1621.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-24575359-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9499d518-61f3-45e6-ab7d-f25c09b30856.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.14ea38d8-8939-40d2-9cb4-dc82139b5eae.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a8bad7fd-9db6-4b13-a33d-0f4f12d10fd1.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ab06d24a-5d0d-426e-805a-3aa1ce35de86.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_b303fe7e-37dd-4041-ae7e-7ac3b00812f9
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: b303fe7e-37dd-4041-ae7e-7ac3b00812f9
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260703-1621.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-24575546-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f0c48bf9-412a-4632-9615-672cbb819594.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.db6a8210-b87f-4802-9b45-91fc72152db6.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.58879129-ce64-41e6-8eab-5bb67a8ba8de.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.4ef372e8-a53c-4f0c-9d46-682090f69149.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_cee35470-7d88-4a21-86c7-dbf84ad945fa
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: cee35470-7d88-4a21-86c7-dbf84ad945fa
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 801
+                   P3: ffffffffc0000001
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1158.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-490765-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.17303379-6919-49a4-822d-2902d950a62a.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.6a1c3267-f817-41d0-9ebe-afe0105d7bfc.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.90cb41a5-720b-47c9-8353-6b00ffe4521f.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a0ea8078-4caa-4c40-8b29-9c73896058b9.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_23e44355428d93e210973b9d7783b92b58d8
+                   8_00000000_d448a7c7-674e-4606-a944-02bc6ea48563
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: d448a7c7-674e-4606-a944-02bc6ea48563
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 815
+                   P3: 2
+                   P4: ffff950a21b82080
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1140.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-224359-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.11b23949-5377-42bf-96f0-d44c98508d64.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a608268b-21ff-435a-a592-cd2a8503167d.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.c09cf76b-81a8-4e8f-9a61-03e9bd25e706.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d5264bd1-6963-485c-8f1f-a01f9c64b836.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_4e2788a01e416c4a3b621e56a75af3b5a673
+                   5ce_00000000_cf5b422a-efc3-4e25-9298-f23d80ed8923
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: cf5b422a-efc3-4e25-9298-f23d80ed8923
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffff950a2e16c060
+                   P3: fffff8045f8e7740
+                   P4: 0
+                   P5: ffff950a24ad6080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1139.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-175515-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.485950ca-a2d5-4dea-adea-4c7add7e4ce8.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.76b8bf8d-c702-447c-93d5-02b9ae67abac.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.0e347934-baf1-4f59-9cf2-8c12c345527a.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.7d30d8c5-4997-4bec-aa77-c7a7f0dc2646.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_ee36cb63a829eeff9ae7f7e7dba3e85e3823
+                   3b71_00000000_9c6caa6f-db39-4236-bf7f-242f643375d6
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 9c6caa6f-db39-4236-bf7f-242f643375d6
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260701-1139.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-175500-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.b723b372-5ad0-4361-bd87-eae945642eb2.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.5fae4518-ba64-4d83-a005-b2046c532cae.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8488e28e-4762-40c1-9395-acd492722990.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.758c2aa1-d839-4b34-a077-b5d1ed3302b1.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_6a6ab46f-67ac-4160-bb5b-bc02c5f7fcc5
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 6a6ab46f-67ac-4160-bb5b-bc02c5f7fcc5
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260701-1139.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-175312-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.4c0da7ad-af4f-42e7-adf1-b4b6cd63ef15.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.17294d36-1314-45a4-9e64-b3b4b63f3a35.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.98913f0c-ca35-45a7-a4ca-b25062d71d4a.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2170da0a-ad02-406c-9f5d-10332966a0e2.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_1fe21014-50db-4d89-a411-51bc985ee29a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 1fe21014-50db-4d89-a411-51bc985ee29a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 815
+                   P3: 2
+                   P4: ffffa708dfbaa080
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1106.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5776406-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.81d0213b-232d-4847-84a3-861bfc597286.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8e6b1d92-28bc-4e0b-a6c1-b5daed19441e.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2f38da8d-55eb-47aa-b1ee-3d83b125603b.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.099d8cb8-fb51-4bb8-a9cb-4ee6a3657cea.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_268043ef1dfcaaaff058885eb2ea2f16c676
+                   47_00000000_5d38be60-a19f-43b7-bf2b-d5ed64f7a5e7
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 5d38be60-a19f-43b7-bf2b-d5ed64f7a5e7
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffa708e4de50d0
+                   P3: fffff8007aa1af80
+                   P4: 0
+                   P5: ffffa708c7d480c0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1105.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5722000-1.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.797922c7-eb55-48f3-bf6c-7b990c0c29d9.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.e2faa3e7-1740-4f67-830e-0c22b3cf9465.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2b30e1af-57a8-4dfc-b5d4-9ab913e998ee.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d3207bb9-b156-4ed2-a720-84edd959c898.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_24ec7895d714b04fc59bab254051521c9dd8
+                   2f71_00000000_88ac2bbe-90ae-4a14-8f1f-67a608ff4e89
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 88ac2bbe-90ae-4a14-8f1f-67a608ff4e89
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260701-1105.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5721703-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.54fcf0ca-9e6f-47a2-aa59-a89fba344c8d.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.dede513a-3741-410f-8627-9254cc9ec817.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8259353f-ed4b-4dc8-b9ad-704f45d22856.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9622e868-35af-476b-ab3f-5a502021e427.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_850dbb40-6257-461a-a3e9-43b80686e5d8
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 850dbb40-6257-461a-a3e9-43b80686e5d8
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260701-1105.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5721890-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.15cd7e22-f67b-4169-bc82-8a9a1c7e1c5f.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.1155afae-2f40-4e6a-ab5c-acfb5766a3f4.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.786615b3-747c-4e39-af2d-f1a28f9f3d1a.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f92da4d1-f7fa-4bd5-ab60-a149fb22ccf2.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_64490bf5-3dd0-4d5b-b5bf-998a10d164d4
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 64490bf5-3dd0-4d5b-b5bf-998a10d164d4
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 1b0
+                   P2: 1
+                   P3: ffffffffc0000001
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260630-2339.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-4064312-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.50d8b400-6089-4496-826a-510ac181bb97.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.cb00a1a4-1074-4690-a65f-ae89637931dc.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8257d673-1f6c-482f-af4f-1cac6661d34f.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.03fec9e9-39c9-4a62-a81c-d5dd9ef01e3a.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_1b0_baa64d15ec0888e2eedb9599153b09ef883a
+                   91a_00000000_3f17e6a5-b29b-455d-8e43-02f63b0db21a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 3f17e6a5-b29b-455d-8e43-02f63b0db21a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260630-2334.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3730375-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.82b65b9d-f098-4228-bc3a-f3e3b36d749e.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.875f31b7-c951-413e-9ec7-ee310bb3913e.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ded7cd41-37fb-4306-b370-cd65c58e7138.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f340af11-2730-4d46-a946-2e1be6988b50.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_707299fd-10e7-4990-bdd8-ecae0a505d19
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 707299fd-10e7-4990-bdd8-ecae0a505d19
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260630-2334.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3730187-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.77fa10ff-13b9-4f03-879b-36a15cb79e2c.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.6d5aa2cd-6cd4-404b-b719-63e365ba1c9c.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.c9d70d59-89c0-4548-8159-cfb795abbe9b.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.5b2d8de5-df8f-4806-a962-2f96e8fcedc4.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_35eca877-5f64-4935-bf19-2eb97024e6e9
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 35eca877-5f64-4935-bf19-2eb97024e6e9
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffe78d9bb3b0d0
+                   P3: fffff80586feaf80
+                   P4: 0
+                   P5: ffffe78d9cb58080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260630-2334.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3730390-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ce6d693e-7859-4a42-810b-368f02abb668.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f0c157d8-69e6-4411-a049-04676416e499.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8c0df00a-a571-4345-85c7-344eda4cafbb.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2ffdd4e1-a580-48ba-9a0b-dc1b85f91817.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_e10c3ca7ded7fd3a7f52cc7e42c97ba1c212
+                   9_00000000_9d073eac-8105-420e-8519-b0e5cb7a7576
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 9d073eac-8105-420e-8519-b0e5cb7a7576
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 1b0
+                   P2: 1
+                   P3: ffffffffc0000001
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260629-1023.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3193765-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.65774f22-9a55-40aa-a3bd-fc3c3dd6d6f4.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.6488e9ac-1066-4d59-ac89-8be5fb7aa7c5.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.410c5926-12da-47a8-911a-acd01abd3f30.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.296cc000-221d-4cf4-b80e-82b91e4bded8.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_1b0_baa64d15ec0888e2eedb9599153b09ef883a
+                   91a_00000000_640949ca-7b02-4969-8069-7e3120ae2adc
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 640949ca-7b02-4969-8069-7e3120ae2adc
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 815
+                   P3: 2
+                   P4: ffffbc0fe091c080
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260629-1018.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2909046-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9e76fc92-1463-4647-89cb-1c01c3ba2066.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8724d281-38dc-4765-9689-4d24fd3f32b6.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d148319d-e9d7-4139-8af1-f463f453674d.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.82e9c93c-3ff7-47e9-af5b-26affe594eac.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_7222d78f6f719912195f32952db5d9ab95b8
+                   d1bd_00000000_5e9c523d-5336-4ebc-8f56-8a7e12144403
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 5e9c523d-5336-4ebc-8f56-8a7e12144403
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260629-1017.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2859828-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a407aec4-68b8-4d6e-85e5-7c99fc626f3a.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d069e21c-d442-4c67-9a05-44c22619ed83.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f04f84bb-a614-40a4-8dab-7ff13d6aaa54.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f4646154-7eda-4820-9096-2a3591d24a0f.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_e27b4c21-f652-47ea-86a6-69c102ad078a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: e27b4c21-f652-47ea-86a6-69c102ad078a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260629-1017.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2859640-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.c245e1ef-756e-4ce4-8efb-631e1d33ea1c.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.4229b741-d44d-441b-8715-700b7ac2ec28.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.79204e27-c0ed-4941-a6af-9fe414152075.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.be38df40-e5eb-41bc-8bd2-576a76151685.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_c0f00177-cd05-459c-8312-a375577cdfd1
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: c0f00177-cd05-459c-8312-a375577cdfd1
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffbc0ff31eb010
+                   P3: fffff8015634af80
+                   P4: 0
+                   P5: ffffbc0fe5d42080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260629-1017.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2859937-1.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9700df24-03f1-4a14-b5ce-1a24a07b17d9.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.0e684543-f975-47de-9b3f-f2fd4b38313f.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.0228d36f-a5b5-4b78-afda-94126bff2cf3.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ffa67da4-aeda-4f91-a97f-653836680a87.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_935cc8142f6769bf5d82ec1cd8f4b7321f69
+                   f6f5_00000000_2c0f9517-dfe5-4ee6-b1df-99e2a431f00a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 2c0f9517-dfe5-4ee6-b1df-99e2a431f00a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 801
+                   P3: ffffffffc0000001
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260624-1549.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-611062-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.005a6488-2978-4353-a5e0-49726ac5ec90.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ab57e363-cd96-4f16-9c8b-1e5d327fe464.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.354aa688-307f-4440-b444-a9cfd35fc77d.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.81f45aac-f0e8-43fb-a071-a973d6fb42d3.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_23e44355428d93e210973b9d7783b92b58d8
+                   8_00000000_2eb11cdc-b42c-4d5f-9264-802273b2c36c
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 2eb11cdc-b42c-4d5f-9264-802273b2c36c
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 815
+                   P3: 2
+                   P4: ffffc306af779080
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260624-1452.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-74206937-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.6b25006e-bc23-44e6-8709-367d531b65cd.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ba0e01f9-7d23-4205-aca8-1e8069c3f2b3.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a84d79eb-b9eb-4695-a05b-a80766a66a81.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.fd46d13e-0536-4e13-b2df-ef122843faea.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_ce10aeaaae2e9723308abe18182a7f85517e
+                   1c_00000000_6ecdb4b3-8372-4788-ada8-044a44cd472b
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 6ecdb4b3-8372-4788-ada8-044a44cd472b
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffc306d7ce63d0
+                   P3: fffff8028f9daf80
+                   P4: 0
+                   P5: ffffc306b9067080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260624-1451.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-74170281-1.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.752d63f9-a82f-45e9-b6c3-c8287de95e41.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.0c270c15-86ff-41fb-bd81-698f7ee265e7.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ea7a6f73-2914-4188-bf2a-d9dc98e394b1.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.1c479c04-5196-4ac1-8cfb-fc33abc7a12d.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_ff55aa2d4439a2c7214ede5b87e39c68dde1
+                   6c4_00000000_f867a90b-0b9c-498e-bd90-7abf6926f211
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: f867a90b-0b9c-498e-bd90-7abf6926f211
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260624-1451.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-74170000-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.89ef4c38-010c-4189-a77a-1c7120d7fc0c.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.05a7964c-0663-4252-9bdb-f9feb05be516.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.5e609ef3-a74b-45c4-b47c-d60b8643c41d.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2a38be83-17f4-47b2-987e-dabad4def372.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_3484361f-8cd0-44b8-af8e-71fd59d7dd50
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 3484361f-8cd0-44b8-af8e-71fd59d7dd50
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:28:26
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260624-1451.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-74170171-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.1b62f4cc-5b08-4f1a-8ac0-39b9ea1f0d15.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.c46cee9e-17ec-4592-9ed5-e3025a187c95.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.34473e82-cd17-4cc6-8d6d-d581463a3bfc.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9370116f-e2ce-4435-8905-426dfcfd1b42.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_6d1a565b-db09-409e-9115-043c00be0301
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 6d1a565b-db09-409e-9115-043c00be0301
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:27:30
+Id               : 1
+LevelDisplayName : Informa��es
+ProviderName     : SecurityCenter
+MachineName      : computer
+Message          : O Servi�o da Central de Seguran�a do Windows foi iniciado.
+
+TimeCreated      : 03/07/2026 16:25:40
+Id               : 1
+LevelDisplayName : 
+ProviderName     : SpotifyUpdateTask
+MachineName      : computer
+Message          : 
+
+TimeCreated      : 03/07/2026 16:25:40
+Id               : 1
+LevelDisplayName : 
+ProviderName     : SpotifyUpdateTask
+MachineName      : computer
+Message          : 
+
+TimeCreated      : 03/07/2026 16:25:32
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffd181794f4060
+                   P3: fffff801bdeeaf80
+                   P4: 0
+                   P5: ffffd181794f1080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260703-1621.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-24575578-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.87a08a54-3e08-470a-a322-b36de559ffa9.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.07fe49c3-cf5a-4638-8b75-81e2d88c5538.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a3608434-c034-496d-851b-189e52f3a0a8.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.21f28563-5e2e-4392-b6da-0a071781a529.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_80c629cc2391412ac8c6b274d039bf46838c
+                   cfed_00000000_b56a8661-1b3d-40b9-8878-8da40b2a11b1
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: b56a8661-1b3d-40b9-8878-8da40b2a11b1
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:32
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260703-1621.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-24575359-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9499d518-61f3-45e6-ab7d-f25c09b30856.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.14ea38d8-8939-40d2-9cb4-dc82139b5eae.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a8bad7fd-9db6-4b13-a33d-0f4f12d10fd1.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ab06d24a-5d0d-426e-805a-3aa1ce35de86.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_b303fe7e-37dd-4041-ae7e-7ac3b00812f9
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: b303fe7e-37dd-4041-ae7e-7ac3b00812f9
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:32
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260703-1621.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-24575546-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f0c48bf9-412a-4632-9615-672cbb819594.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.db6a8210-b87f-4802-9b45-91fc72152db6.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.58879129-ce64-41e6-8eab-5bb67a8ba8de.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.4ef372e8-a53c-4f0c-9d46-682090f69149.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_cee35470-7d88-4a21-86c7-dbf84ad945fa
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: cee35470-7d88-4a21-86c7-dbf84ad945fa
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:32
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 801
+                   P3: ffffffffc0000001
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1158.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-490765-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.17303379-6919-49a4-822d-2902d950a62a.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.6a1c3267-f817-41d0-9ebe-afe0105d7bfc.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.90cb41a5-720b-47c9-8353-6b00ffe4521f.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a0ea8078-4caa-4c40-8b29-9c73896058b9.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_23e44355428d93e210973b9d7783b92b58d8
+                   8_00000000_d448a7c7-674e-4606-a944-02bc6ea48563
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: d448a7c7-674e-4606-a944-02bc6ea48563
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:32
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 815
+                   P3: 2
+                   P4: ffff950a21b82080
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1140.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-224359-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.11b23949-5377-42bf-96f0-d44c98508d64.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a608268b-21ff-435a-a592-cd2a8503167d.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.c09cf76b-81a8-4e8f-9a61-03e9bd25e706.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d5264bd1-6963-485c-8f1f-a01f9c64b836.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_4e2788a01e416c4a3b621e56a75af3b5a673
+                   5ce_00000000_cf5b422a-efc3-4e25-9298-f23d80ed8923
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: cf5b422a-efc3-4e25-9298-f23d80ed8923
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:31
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffff950a2e16c060
+                   P3: fffff8045f8e7740
+                   P4: 0
+                   P5: ffff950a24ad6080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1139.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-175515-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.485950ca-a2d5-4dea-adea-4c7add7e4ce8.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.76b8bf8d-c702-447c-93d5-02b9ae67abac.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.0e347934-baf1-4f59-9cf2-8c12c345527a.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.7d30d8c5-4997-4bec-aa77-c7a7f0dc2646.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_ee36cb63a829eeff9ae7f7e7dba3e85e3823
+                   3b71_00000000_9c6caa6f-db39-4236-bf7f-242f643375d6
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 9c6caa6f-db39-4236-bf7f-242f643375d6
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:31
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260701-1139.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-175500-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.b723b372-5ad0-4361-bd87-eae945642eb2.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.5fae4518-ba64-4d83-a005-b2046c532cae.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8488e28e-4762-40c1-9395-acd492722990.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.758c2aa1-d839-4b34-a077-b5d1ed3302b1.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_6a6ab46f-67ac-4160-bb5b-bc02c5f7fcc5
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 6a6ab46f-67ac-4160-bb5b-bc02c5f7fcc5
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:31
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260701-1139.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-175312-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.4c0da7ad-af4f-42e7-adf1-b4b6cd63ef15.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.17294d36-1314-45a4-9e64-b3b4b63f3a35.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.98913f0c-ca35-45a7-a4ca-b25062d71d4a.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2170da0a-ad02-406c-9f5d-10332966a0e2.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_1fe21014-50db-4d89-a411-51bc985ee29a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 1fe21014-50db-4d89-a411-51bc985ee29a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:31
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 815
+                   P3: 2
+                   P4: ffffa708dfbaa080
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1106.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5776406-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.81d0213b-232d-4847-84a3-861bfc597286.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8e6b1d92-28bc-4e0b-a6c1-b5daed19441e.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2f38da8d-55eb-47aa-b1ee-3d83b125603b.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.099d8cb8-fb51-4bb8-a9cb-4ee6a3657cea.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_268043ef1dfcaaaff058885eb2ea2f16c676
+                   47_00000000_5d38be60-a19f-43b7-bf2b-d5ed64f7a5e7
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 5d38be60-a19f-43b7-bf2b-d5ed64f7a5e7
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:31
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffa708e4de50d0
+                   P3: fffff8007aa1af80
+                   P4: 0
+                   P5: ffffa708c7d480c0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260701-1105.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5722000-1.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.797922c7-eb55-48f3-bf6c-7b990c0c29d9.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.e2faa3e7-1740-4f67-830e-0c22b3cf9465.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2b30e1af-57a8-4dfc-b5d4-9ab913e998ee.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d3207bb9-b156-4ed2-a720-84edd959c898.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_24ec7895d714b04fc59bab254051521c9dd8
+                   2f71_00000000_88ac2bbe-90ae-4a14-8f1f-67a608ff4e89
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 88ac2bbe-90ae-4a14-8f1f-67a608ff4e89
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:30
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260701-1105.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5721703-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.54fcf0ca-9e6f-47a2-aa59-a89fba344c8d.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.dede513a-3741-410f-8627-9254cc9ec817.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8259353f-ed4b-4dc8-b9ad-704f45d22856.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9622e868-35af-476b-ab3f-5a502021e427.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_850dbb40-6257-461a-a3e9-43b80686e5d8
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 850dbb40-6257-461a-a3e9-43b80686e5d8
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:30
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260701-1105.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-5721890-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.15cd7e22-f67b-4169-bc82-8a9a1c7e1c5f.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.1155afae-2f40-4e6a-ab5c-acfb5766a3f4.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.786615b3-747c-4e39-af2d-f1a28f9f3d1a.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f92da4d1-f7fa-4bd5-ab60-a149fb22ccf2.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_64490bf5-3dd0-4d5b-b5bf-998a10d164d4
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 64490bf5-3dd0-4d5b-b5bf-998a10d164d4
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:30
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 1b0
+                   P2: 1
+                   P3: ffffffffc0000001
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260630-2339.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-4064312-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.50d8b400-6089-4496-826a-510ac181bb97.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.cb00a1a4-1074-4690-a65f-ae89637931dc.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8257d673-1f6c-482f-af4f-1cac6661d34f.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.03fec9e9-39c9-4a62-a81c-d5dd9ef01e3a.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_1b0_baa64d15ec0888e2eedb9599153b09ef883a
+                   91a_00000000_3f17e6a5-b29b-455d-8e43-02f63b0db21a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 3f17e6a5-b29b-455d-8e43-02f63b0db21a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:30
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260630-2334.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3730375-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.82b65b9d-f098-4228-bc3a-f3e3b36d749e.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.875f31b7-c951-413e-9ec7-ee310bb3913e.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ded7cd41-37fb-4306-b370-cd65c58e7138.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f340af11-2730-4d46-a946-2e1be6988b50.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_707299fd-10e7-4990-bdd8-ecae0a505d19
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 707299fd-10e7-4990-bdd8-ecae0a505d19
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:30
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260630-2334.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3730187-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.77fa10ff-13b9-4f03-879b-36a15cb79e2c.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.6d5aa2cd-6cd4-404b-b719-63e365ba1c9c.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.c9d70d59-89c0-4548-8159-cfb795abbe9b.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.5b2d8de5-df8f-4806-a962-2f96e8fcedc4.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_35eca877-5f64-4935-bf19-2eb97024e6e9
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 35eca877-5f64-4935-bf19-2eb97024e6e9
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:29
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffe78d9bb3b0d0
+                   P3: fffff80586feaf80
+                   P4: 0
+                   P5: ffffe78d9cb58080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260630-2334.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3730390-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ce6d693e-7859-4a42-810b-368f02abb668.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f0c157d8-69e6-4411-a049-04676416e499.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8c0df00a-a571-4345-85c7-344eda4cafbb.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.2ffdd4e1-a580-48ba-9a0b-dc1b85f91817.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_e10c3ca7ded7fd3a7f52cc7e42c97ba1c212
+                   9_00000000_9d073eac-8105-420e-8519-b0e5cb7a7576
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 9d073eac-8105-420e-8519-b0e5cb7a7576
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:29
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 1b0
+                   P2: 1
+                   P3: ffffffffc0000001
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260629-1023.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-3193765-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.65774f22-9a55-40aa-a3bd-fc3c3dd6d6f4.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.6488e9ac-1066-4d59-ac89-8be5fb7aa7c5.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.410c5926-12da-47a8-911a-acd01abd3f30.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.296cc000-221d-4cf4-b80e-82b91e4bded8.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_1b0_baa64d15ec0888e2eedb9599153b09ef883a
+                   91a_00000000_640949ca-7b02-4969-8069-7e3120ae2adc
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 640949ca-7b02-4969-8069-7e3120ae2adc
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:29
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 193
+                   P2: 815
+                   P3: 2
+                   P4: ffffbc0fe091c080
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260629-1018.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2909046-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9e76fc92-1463-4647-89cb-1c01c3ba2066.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.8724d281-38dc-4765-9689-4d24fd3f32b6.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d148319d-e9d7-4139-8af1-f463f453674d.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.82e9c93c-3ff7-47e9-af5b-26affe594eac.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_193_7222d78f6f719912195f32952db5d9ab95b8
+                   d1bd_00000000_5e9c523d-5336-4ebc-8f56-8a7e12144403
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 5e9c523d-5336-4ebc-8f56-8a7e12144403
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:29
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a2000002
+                   P2: c8
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_REPORT_UM\AMD_REPORT_UM-20260629-1017.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2859828-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.a407aec4-68b8-4d6e-85e5-7c99fc626f3a.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.d069e21c-d442-4c67-9a05-44c22619ed83.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f04f84bb-a614-40a4-8dab-7ff13d6aaa54.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.f4646154-7eda-4820-9096-2a3591d24a0f.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a2000002_212b6c9ecfc067faebdd64235f5e7b1
+                   db6721de_00000000_e27b4c21-f652-47ea-86a6-69c102ad078a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: e27b4c21-f652-47ea-86a6-69c102ad078a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:29
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: a1000001
+                   P2: 1
+                   P3: 0
+                   P4: 0
+                   P5: 0
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\AMD_WATCHDOG\AMD_WATCHDOG-20260629-1017.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2859640-0.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.c245e1ef-756e-4ce4-8efb-631e1d33ea1c.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.4229b741-d44d-441b-8715-700b7ac2ec28.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.79204e27-c0ed-4941-a6af-9fe414152075.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.be38df40-e5eb-41bc-8bd2-576a76151685.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_a1000001_6df0a21625765c1bcf403d1c114a32d
+                   f92674047_00000000_c0f00177-cd05-459c-8312-a375577cdfd1
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: c0f00177-cd05-459c-8312-a375577cdfd1
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+TimeCreated      : 03/07/2026 16:25:29
+Id               : 1001
+LevelDisplayName : Informa��es
+ProviderName     : Windows Error Reporting
+MachineName      : computer
+Message          : Falha no bucket , tipo 0
+                   Nome do Evento: LiveKernelEvent
+                   Resposta: N�o dispon�vel
+                   ID do CAB: 0
+                   
+                   Assinatura do problema:
+                   P1: 141
+                   P2: ffffbc0ff31eb010
+                   P3: fffff8015634af80
+                   P4: 0
+                   P5: ffffbc0fe5d42080
+                   P6: 10_0_26200
+                   P7: 0_0
+                   P8: 768_1
+                   P9: 
+                   P10: 
+                   
+                   Arquivos anexados:
+                   \\?\C:\WINDOWS\LiveKernelReports\WATCHDOG\WATCHDOG-20260629-1017.dmp
+                   \\?\C:\WINDOWS\SystemTemp\WER-2859937-1.sysdata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.9700df24-03f1-4a14-b5ce-1a24a07b17d9.tmp.WERIntern
+                   alMetadata.xml
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.0e684543-f975-47de-9b3f-f2fd4b38313f.tmp.csv
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.0228d36f-a5b5-4b78-afda-94126bff2cf3.tmp.txt
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\Temp\WER.ffa67da4-aeda-4f91-a97f-653836680a87.tmp.xml
+                   
+                   Esses arquivos talvez estejam dispon�veis em:
+                   \\?\C:\ProgramData\Microsoft\Windows\WER\ReportQueue\Kernel_141_935cc8142f6769bf5d82ec1cd8f4b7321f69
+                   f6f5_00000000_2c0f9517-dfe5-4ee6-b1df-99e2a431f00a
+                   
+                   S�mbolo da an�lise: 
+                   Verificando novamente se h� uma solu��o: 0
+                   ID do Relat�rio: 2c0f9517-dfe5-4ee6-b1df-99e2a431f00a
+                   Status do Relat�rio: 2049
+                   Bucket com hash: Guid do CAB: 0
+
+Recent WHEA Events
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "
+$start = (Get-Date).AddDays(-1)
+Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger'; StartTime = $start } -ErrorAction SilentlyContinue |
+  Select-Object -First 40 TimeCreated, Id, LevelDisplayName, ProviderName, Message |
+  Format-List
+"
+ExitCode: 1
+
+Crash Artifacts
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "$paths = @(
+  `"$env:SystemRoot\LiveKernelReports`",
+  `"$env:SystemRoot\Minidump`",
+  `"$env:ProgramData\Microsoft\Windows\WER\ReportArchive`",
+  `"$env:ProgramData\Microsoft\Windows\WER\ReportQueue`"
+)
+foreach ($path in $paths) {
+  `"Path: $path`"
+  if (Test-Path $path) {
+    Get-ChildItem -Path $path -Recurse -File -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 25 FullName, Length, LastWriteTime
+  }
+  else {
+    '  Not found.'
+  }
+  ''
+}"
+ExitCode: 0
+
+stderr:
+$env:SystemRoot\LiveKernelReports, : O termo '$env:SystemRoot\LiveKernelReports,' n�o � reconhecido como nome de 
+cmdlet, fun��o, arquivo de script ou programa oper�vel. Verifique a grafia do nome ou, se um caminho tiver sido 
+inclu�do, veja se o caminho est� correto e tente novamente.
+No linha:2 caractere:3
++   `$env:SystemRoot\LiveKernelReports`,
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: ($env:SystemRoot\LiveKernelReports,:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+$env:SystemRoot\Minidump, : O termo '$env:SystemRoot\Minidump,' n�o � reconhecido como nome de cmdlet, fun��o, arquivo 
+de script ou programa oper�vel. Verifique a grafia do nome ou, se um caminho tiver sido inclu�do, veja se o caminho 
+est� correto e tente novamente.
+No linha:3 caractere:3
++   `$env:SystemRoot\Minidump`,
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: ($env:SystemRoot\Minidump,:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+$env:ProgramData\Microsoft\Windows\WER\ReportArchive, : O termo 
+'$env:ProgramData\Microsoft\Windows\WER\ReportArchive,' n�o � reconhecido como nome de cmdlet, fun��o, arquivo de 
+script ou programa oper�vel. Verifique a grafia do nome ou, se um caminho tiver sido inclu�do, veja se o caminho est� 
+correto e tente novamente.
+No linha:4 caractere:3
++   `$env:ProgramData\Microsoft\Windows\WER\ReportArchive`,
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: ($env:ProgramDat...\ReportArchive,:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+$env:ProgramData\Microsoft\Windows\WER\ReportQueue
+ : O termo '$env:ProgramData\Microsoft\Windows\WER\ReportQueue
+' n�o � reconhecido como nome de cmdlet, fun��o, arquivo de script ou programa oper�vel. Verifique a grafia do nome 
+ou, se um caminho tiver sido inclu�do, veja se o caminho est� correto e tente novamente.
+No linha:5 caractere:3
++   `$env:ProgramData\Microsoft\Windows\WER\ReportQueue`
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: ($env:ProgramDat...ER\ReportQueue
+:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+Display Registry TDR Keys
+--------------------------------------------------------------------------------
+Command: powershell -NoProfile -ExecutionPolicy Bypass -Command "$path = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
+if (Test-Path $path) {
+  Get-ItemProperty -Path $path |
+    Select-Object TdrDelay, TdrDdiDelay, TdrLevel, TdrLimitCount, TdrLimitTime |
+    Format-List
+}
+else {
+  'GraphicsDrivers registry key was not found.'
+}"
+ExitCode: 0
+
+
+
+TdrDelay      : 
+TdrDdiDelay   : 
+TdrLevel      : 
+TdrLimitCount : 
+TdrLimitTime  :
+
+DirectX Diagnostic
+--------------------------------------------------------------------------------
+Command: dxdiag /dontskip /t "C:\Users\cfp\Documents\detector\GpuCrashDetector\reports-realtime-test\dxdiag-20260703-164226.txt"
+ExitCode: 0
+dxdiag report saved to:
+C:\Users\cfp\Documents\detector\GpuCrashDetector\reports-realtime-test\dxdiag-20260703-164226.txt
+
+Preview:
+------------------
+System Information
+------------------
+      Time of this report: 7/3/2026, 16:42:26
+             Machine name: COMPUTER
+               Machine Id: {6C94284A-D37E-46DD-86DF-E1503C18FBD4}
+         Operating System: Windows 11 Home 64-bit (10.0, Build 26200) (26100.ge_release.240331-1435)
+                 Language: Portuguese (Regional Setting: Portuguese)
+      System Manufacturer: n/a
+             System Model: n/a
+                     BIOS: n/a (type: UEFI)
+                Processor: n/a
+                   Memory: 32768MB RAM
+      Available OS Memory: 31906MB RAM
+                Page File: 10453MB used, 43979MB available
+              Windows Dir: C:\WINDOWS
+          DirectX Version: DirectX 12
+      DX Setup Parameters: Not found
+         User DPI Setting: 96 DPI (100 percent)
+       System DPI Setting: 96 DPI (100 percent)
+          DWM DPI Scaling: Disabled
+                 Miracast: Not Available
+Microsoft Graphics Hybrid: Not Supported
+ DirectX Database Version: 1.8.5
+   Auto Super Res Version: Unknown
+       System Mux Support: Mux Support Inactive - Ok
+           Mux Target GPU: dGPU
+    Mux Incompatible List: Unknown
+           DxDiag Version: 10.00.26100.8521 64bit Unicode
+         OS Build Version: 10.0.26100.8655 (26200.8655)
+
+------------
+DxDiag Notes
+------------
+      Display Tab 1: No problems found.
+      Display Tab 2: There is a problem with AMD Radeon RX 9070 device. For more information, search for 'graphics device driver error code 22' 
+      Display Tab 3: There is a problem with AMD Radeon(TM) Graphics device. For more information, search for 'graphics device driver error code 22' 
+        Sound Tab 1: No problems found.
+        Sound Tab 2: No problems found.
+        Sound Tab 3: No problems found.
+          Input Tab: No problems found.
+
+--------------------
+DirectX Debug Levels
+--------------------
+Direct3D:    0/4 (retail)
+DirectDraw:  0/4 (retail)
+DirectInput: 0/5 (retail)
+DirectMusic: 0/5 (retail)
+DirectPlay:  0/9 (retail)
+DirectSound: 0/5 (retail)
+DirectShow:  0/6 (retail)
+
+---------------
+Display Devices
+---------------
+           Card name: Driver de V�deo B�sico da Microsoft
+        Manufacturer: (Tipos padr�o de v�deo)
+           Chip type: 
+            DAC type: 
+         Device Type: Display-Only Device
+          Device Key: Enum\ROOT\BASICDISPLAY
+       Device Status: 4180000B [DN_ROOT_ENUMERATED|DN_DRIVER_LOADED|DN_STARTED|DN_NT_ENUMERATOR|DN_NT_DRIVER|DN_NO_SHOW_IN_DM] 
+ Device Problem Code: No Problem
+ Driver Problem Code: Unknown
+      Display Memory: 15952 MB
+    Dedicated Memory: 0 MB
+       Shared Memory: 15952 MB
+        Current Mode: 3440 x 1440 (32 bit) (64Hz)
+         HDR Support: Not Supported
+    Display Topology: Internal
+ Display Color Space: DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709
+     Color Primaries: Red(0.639648,0.330078), Green(0.299805,0.599609), Blue(0.150391,0.059570), White Point(0.312500,0.329102)
+   Display Luminance: Min Luminance = 0.500000, Max Luminance = 270.000000, MaxFullFrameLuminance = 270.000000
+        Monitor Name: Generic PnP Monitor
+       Monitor Model: LC34G55T
+          Monitor Id: SAM711A
+         Native Mode: 3440 x 1440(p) (99.982Hz)
+         Output Type: Other
+Monitor Capabilities: HDR Not Supported
