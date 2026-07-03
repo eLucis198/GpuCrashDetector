@@ -1052,32 +1052,26 @@ internal static class DeviceDiscovery
             """;
 
         var output = Program.RunPowerShell(script);
-        var json = ExtractJson(output);
+        var json = PowerShellJson.ExtractJson(output);
         if (string.IsNullOrWhiteSpace(json))
         {
             return [];
         }
 
-        if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+        try
         {
-            return JsonSerializer.Deserialize<List<DisplayDeviceInfo>>(json) ?? [];
+            if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+            {
+                return JsonSerializer.Deserialize<List<DisplayDeviceInfo>>(json) ?? [];
+            }
+
+            var single = JsonSerializer.Deserialize<DisplayDeviceInfo>(json);
+            return single is null ? [] : [single];
         }
-
-        var single = JsonSerializer.Deserialize<DisplayDeviceInfo>(json);
-        return single is null ? [] : [single];
-    }
-
-    private static string ExtractJson(string output)
-    {
-        var lines = output
-            .Split([Environment.NewLine], StringSplitOptions.None)
-            .Where(line => !string.IsNullOrWhiteSpace(line))
-            .Where(line => !line.StartsWith("Command:", StringComparison.Ordinal))
-            .Where(line => !line.StartsWith("ExitCode:", StringComparison.Ordinal))
-            .Where(line => !string.Equals(line, "stderr:", StringComparison.Ordinal))
-            .ToArray();
-
-        return string.Join(Environment.NewLine, lines);
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 }
 
@@ -1096,22 +1090,32 @@ internal static class ServiceDiscovery
             """;
 
         var output = Program.RunPowerShell(script);
-        var json = ExtractJson(output);
+        var json = PowerShellJson.ExtractJson(output);
         if (string.IsNullOrWhiteSpace(json))
         {
             return [];
         }
 
-        if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+        try
         {
-            return JsonSerializer.Deserialize<List<ServiceInfo>>(json) ?? [];
+            if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+            {
+                return JsonSerializer.Deserialize<List<ServiceInfo>>(json) ?? [];
+            }
+
+            var single = JsonSerializer.Deserialize<ServiceInfo>(json);
+            return single is null ? [] : [single];
         }
-
-        var single = JsonSerializer.Deserialize<ServiceInfo>(json);
-        return single is null ? [] : [single];
+        catch (JsonException)
+        {
+            return [];
+        }
     }
+}
 
-    private static string ExtractJson(string output)
+internal static class PowerShellJson
+{
+    public static string ExtractJson(string output)
     {
         var lines = output
             .Split([Environment.NewLine], StringSplitOptions.None)
@@ -1121,7 +1125,22 @@ internal static class ServiceDiscovery
             .Where(line => !string.Equals(line, "stderr:", StringComparison.Ordinal))
             .ToArray();
 
-        return string.Join(Environment.NewLine, lines);
+        var combined = string.Join(Environment.NewLine, lines).Trim();
+        if (string.IsNullOrWhiteSpace(combined))
+        {
+            return string.Empty;
+        }
+
+        var objectIndex = combined.IndexOf('{');
+        var arrayIndex = combined.IndexOf('[');
+        var startIndex = objectIndex switch
+        {
+            -1 => arrayIndex,
+            _ when arrayIndex == -1 => objectIndex,
+            _ => Math.Min(objectIndex, arrayIndex)
+        };
+
+        return startIndex >= 0 ? combined[startIndex..].Trim() : string.Empty;
     }
 }
 
